@@ -1,0 +1,15 @@
+[Unit]
+Description=Memomatic Pinboard kiosk browser
+After=multi-user.target pinboard-app.service fbcp-ili9341.service
+Wants=pinboard-app.service
+
+[Service]
+Type=simple
+User=root
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/bin/startx /home/memomatic/pinboard/app/kiosk.sh -- :0 -nocursor -s 0 -dpms
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

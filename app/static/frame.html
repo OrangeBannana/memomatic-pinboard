@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Memomatic Frame</title>
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #050506;
+      color: #f5f5f2;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #stage {
+      position: fixed;
+      inset: 0;
+      background: #050506;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      overflow: hidden;
+      transition: opacity 650ms ease;
+    }
+
+    .slide.visible {
+      opacity: 1;
+    }
+
+    .slide .backdrop {
+      position: absolute;
+      inset: 0;
+      background-position: center;
+      background-size: cover;
+      filter: blur(var(--backdrop-blur, 8px)) saturate(1.03) brightness(var(--backdrop-brightness, 0.68));
+      transform: none;
+    }
+
+    .slide .backdrop::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    .slide img {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+    }
+
+    #empty {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: none;
+      place-items: center;
+      text-align: center;
+      line-height: 1.35;
+      color: #f8f5e9;
+    }
+
+    #empty.visible {
+      display: grid;
+    }
+
+    #empty .empty-inner {
+      width: min(84vw, 320px);
+    }
+
+    #empty h1 {
+      margin: 0 0 10px;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    #empty p {
+      margin: 0;
+      font-size: 15px;
+      color: #cfc9b8;
+    }
+  </style>
+</head>
+<body>
+  <main id="stage">
+    <div id="slide-a" class="slide">
+      <div class="backdrop"></div>
+      <img alt="">
+    </div>
+    <div id="slide-b" class="slide">
+      <div class="backdrop"></div>
+      <img alt="">
+    </div>
+    <section id="empty">
+      <div class="empty-inner">
+        <h1>Memomatic</h1>
+        <p>Waiting for images</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const slides = [
+      document.getElementById('slide-a'),
+      document.getElementById('slide-b')
+    ];
+    const empty = document.getElementById('empty');
+    let currentId = null;
+    let activeSlide = 0;
+    let pollMs = 2000;
+
+    function setSlide(slide, url) {
+      slide.querySelector('img').src = url;
+      slide.querySelector('.backdrop').style.backgroundImage = `url("${url}")`;
+    }
+
+    async function refresh() {
+      try {
+        const response = await fetch('/api/slideshow/current', { cache: 'no-store' });
+        const data = await response.json();
+        if (data.display) {
+          document.documentElement.style.setProperty('--backdrop-blur', `${data.display.backdrop_blur_px}px`);
+          document.documentElement.style.setProperty('--backdrop-brightness', String(data.display.backdrop_brightness));
+        }
+        pollMs = Math.max(1000, Math.min(5000, Math.floor((data.slide_seconds || 15) * 1000 / 4)));
+        if (!data.image) {
+          currentId = null;
+          slides.forEach(slide => slide.classList.remove('visible'));
+          empty.classList.add('visible');
+          return;
+        }
+
+        empty.classList.remove('visible');
+        if (data.image.id !== currentId) {
+          currentId = data.image.id;
+          const url = `${data.image.url}?t=${Date.now()}`;
+          const next = new Image();
+          next.onload = () => {
+            const nextSlideIndex = activeSlide === 0 ? 1 : 0;
+            const nextSlide = slides[nextSlideIndex];
+            const previousSlide = slides[activeSlide];
+            setSlide(nextSlide, url);
+            nextSlide.classList.add('visible');
+            previousSlide.classList.remove('visible');
+            activeSlide = nextSlideIndex;
+          };
+          next.src = url;
+        } else if (!slides[activeSlide].classList.contains('visible')) {
+          slides[activeSlide].classList.add('visible');
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    refresh();
+    window.setInterval(() => refresh(), pollMs);
+  </script>
+</body>
+</html>

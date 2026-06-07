@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Send to Memomatic</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #191b1f;
+      --muted: #63676f;
+      --line: #d9dce2;
+      --surface: #f7f7f4;
+      --panel: #ffffff;
+      --accent: #2364aa;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: var(--surface);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(440px, calc(100% - 28px));
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0 0 16px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    form {
+      display: grid;
+      gap: 12px;
+    }
+
+    input[type="file"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #fff;
+      font: inherit;
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 11px 12px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    button:disabled { opacity: 0.52; cursor: wait; }
+
+    #status {
+      min-height: 22px;
+      margin-top: 12px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Send to Memomatic</h1>
+    <p>Your image will be added to the pinboard and shown next if guest uploads are enabled.</p>
+    <form id="guest-form">
+      <input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp" required>
+      <button id="upload-button" type="submit">Send Image</button>
+    </form>
+    <div id="status"></div>
+  </main>
+
+  <script>
+    const token = "__GUEST_TOKEN__";
+    const form = document.getElementById('guest-form');
+    const fileInput = document.getElementById('file');
+    const uploadButton = document.getElementById('upload-button');
+    const statusEl = document.getElementById('status');
+
+    function setStatus(message) {
+      statusEl.textContent = message || '';
+    }
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!fileInput.files.length) return;
+      uploadButton.disabled = true;
+      setStatus('Sending...');
+      try {
+        const body = new FormData();
+        body.append('file', fileInput.files[0]);
+        const response = await fetch(`/api/guest/${token}/images`, { method: 'POST', body });
+        if (!response.ok) {
+          let detail = response.statusText;
+          try {
+            const data = await response.json();
+            detail = data.detail || detail;
+          } catch (_) {}
+          throw new Error(detail);
+        }
+        fileInput.value = '';
+        setStatus('Sent. Watch the frame.');
+      } catch (error) {
+        setStatus(error.message);
+      } finally {
+        uploadButton.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

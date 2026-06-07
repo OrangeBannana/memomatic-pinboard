@@ -1,0 +1,548 @@
+from __future__ import annotations
+
+import os
+import secrets
+import sqlite3
+import time
+import uuid
+from io import BytesIO
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
+from PIL import Image, ImageOps, UnidentifiedImageError
+
+
+BASE_DIR = Path(os.environ.get("PINBOARD_HOME", "/home/memomatic/pinboard"))
+DATA_DIR = BASE_DIR / "data"
+ORIGINALS_DIR = BASE_DIR / "images" / "originals"
+DISPLAY_DIR = BASE_DIR / "images" / "display"
+STATIC_DIR = Path(__file__).parent / "static"
+DB_PATH = DATA_DIR / "pinboard.sqlite3"
+DEFAULT_SLIDE_SECONDS = int(os.environ.get("PINBOARD_SLIDE_SECONDS", "15"))
+OWNER_TOKEN = os.environ.get("PINBOARD_OWNER_TOKEN", "memes")
+MAX_UPLOAD_BYTES = int(os.environ.get("PINBOARD_MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
+DISPLAY_MAX_SIZE = (960, 960)
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+GUEST_UPLOAD_LIMIT = 5
+GUEST_UPLOAD_WINDOW_SECONDS = 10 * 60
+
+
+app = FastAPI(title="Memomatic Pinboard")
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/images", StaticFiles(directory=DISPLAY_DIR), name="images")
+
+
+def now() -> float:
+    return time.time()
+
+
+def ensure_dirs() -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    ORIGINALS_DIR.mkdir(parents=True, exist_ok=True)
+    DISPLAY_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def db() -> sqlite3.Connection:
+    ensure_dirs()
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+
+def init_db() -> None:
+    with db() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_name TEXT NOT NULL,
+                stored_name TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'wifi-owner',
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at REAL NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS slideshow_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                current_image_id INTEGER,
+                last_changed_at REAL NOT NULL DEFAULT 0,
+                push_next_image_id INTEGER
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS guest_uploads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token TEXT NOT NULL,
+                remote_addr TEXT NOT NULL,
+                uploaded_at REAL NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO slideshow_state
+                (id, current_image_id, last_changed_at, push_next_image_id)
+            VALUES (1, NULL, 0, NULL)
+            """
+        )
+        defaults = {
+            "slide_seconds": str(DEFAULT_SLIDE_SECONDS),
+            "backdrop_blur_px": "8",
+            "backdrop_brightness": "0.68",
+            "guest_enabled": "0",
+            "guest_token": secrets.token_urlsafe(16),
+        }
+        for key, value in defaults.items():
+            conn.execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+
+
+@app.on_event("startup")
+def startup() -> None:
+    init_db()
+
+
+def row_to_image(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": row["id"],
+        "original_name": row["original_name"],
+        "source": row["source"],
+        "status": row["status"],
+        "created_at": row["created_at"],
+        "url": f"/images/{row['display_name']}",
+    }
+
+
+def require_owner(x_pinboard_owner_token: str | None) -> None:
+    if not OWNER_TOKEN:
+        return
+    if not secrets.compare_digest(x_pinboard_owner_token or "", OWNER_TOKEN):
+        raise HTTPException(status_code=401, detail="Owner token required.")
+
+
+def get_setting(conn: sqlite3.Connection, key: str, default: str) -> str:
+    row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    return row["value"] if row else default
+
+
+def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO settings (key, value)
+        VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        """,
+        (key, value),
+    )
+
+
+def settings_payload(conn: sqlite3.Connection, request: Request) -> dict[str, Any]:
+    guest_token = get_setting(conn, "guest_token", "")
+    base_url = str(request.base_url).rstrip("/")
+    admin_url = f"{base_url}/admin"
+    guest_url = f"{base_url}/guest/{guest_token}" if guest_token else ""
+    return {
+        "slide_seconds": int(get_setting(conn, "slide_seconds", str(DEFAULT_SLIDE_SECONDS))),
+        "backdrop_blur_px": int(get_setting(conn, "backdrop_blur_px", "8")),
+        "backdrop_brightness": float(get_setting(conn, "backdrop_brightness", "0.68")),
+        "guest_enabled": get_setting(conn, "guest_enabled", "0") == "1",
+        "guest_token": guest_token,
+        "admin_url": admin_url,
+        "guest_url": guest_url,
+    }
+
+
+def active_images(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return list(
+        conn.execute(
+            """
+            SELECT * FROM images
+            WHERE status = 'active'
+            ORDER BY created_at ASC, id ASC
+            """
+        )
+    )
+
+
+def choose_next(active: list[sqlite3.Row], current_id: int | None) -> sqlite3.Row:
+    if current_id is None:
+        return active[0]
+
+    ids = [row["id"] for row in active]
+    if current_id not in ids:
+        return active[0]
+
+    if len(active) == 1:
+        return active[0]
+
+    next_index = (ids.index(current_id) + 1) % len(active)
+    return active[next_index]
+
+
+def get_current_image(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    active = active_images(conn)
+    if not active:
+        conn.execute(
+            """
+            UPDATE slideshow_state
+            SET current_image_id = NULL, push_next_image_id = NULL, last_changed_at = ?
+            WHERE id = 1
+            """,
+            (now(),),
+        )
+        return None
+
+    state = conn.execute("SELECT * FROM slideshow_state WHERE id = 1").fetchone()
+    current_id = state["current_image_id"]
+    push_next_id = state["push_next_image_id"]
+    slide_seconds = int(get_setting(conn, "slide_seconds", str(DEFAULT_SLIDE_SECONDS)))
+    elapsed = now() - float(state["last_changed_at"])
+
+    active_by_id = {row["id"]: row for row in active}
+    selected: sqlite3.Row | None = None
+
+    if push_next_id in active_by_id and push_next_id != current_id:
+        selected = active_by_id[push_next_id]
+        conn.execute(
+            """
+            UPDATE slideshow_state
+            SET current_image_id = ?, push_next_image_id = NULL, last_changed_at = ?
+            WHERE id = 1
+            """,
+            (selected["id"], now()),
+        )
+    elif current_id not in active_by_id:
+        selected = active[0]
+        conn.execute(
+            """
+            UPDATE slideshow_state
+            SET current_image_id = ?, push_next_image_id = NULL, last_changed_at = ?
+            WHERE id = 1
+            """,
+            (selected["id"], now()),
+        )
+    elif elapsed >= slide_seconds:
+        selected = choose_next(active, current_id)
+        conn.execute(
+            """
+            UPDATE slideshow_state
+            SET current_image_id = ?, push_next_image_id = NULL, last_changed_at = ?
+            WHERE id = 1
+            """,
+            (selected["id"], now()),
+        )
+    else:
+        selected = active_by_id[current_id]
+
+    return row_to_image(selected)
+
+
+def save_upload(file: UploadFile, content: bytes, source: str = "wifi-owner") -> dict[str, Any]:
+    original_suffix = Path(file.filename or "").suffix.lower()
+    if original_suffix not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG, and WebP images are supported.")
+    if file.content_type and file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG, and WebP images are supported.")
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=400, detail="Image is too large.")
+
+    image_id = uuid.uuid4().hex
+    original_name = f"{image_id}{original_suffix}"
+    display_name = f"{image_id}.jpg"
+    original_path = ORIGINALS_DIR / original_name
+    display_path = DISPLAY_DIR / display_name
+
+    try:
+        original_path.write_bytes(content)
+        with Image.open(original_path) as img:
+            img = ImageOps.exif_transpose(img)
+            img.thumbnail(DISPLAY_MAX_SIZE, Image.Resampling.LANCZOS)
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            elif img.mode == "L":
+                img = img.convert("RGB")
+            img.save(display_path, "JPEG", quality=88, optimize=True)
+    except UnidentifiedImageError as exc:
+        original_path.unlink(missing_ok=True)
+        display_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail="Uploaded file is not a readable image.") from exc
+    except Exception:
+        original_path.unlink(missing_ok=True)
+        display_path.unlink(missing_ok=True)
+        raise
+
+    with db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO images
+                (original_name, stored_name, display_name, source, status, created_at)
+            VALUES (?, ?, ?, ?, 'active', ?)
+            """,
+            (file.filename or original_name, original_name, display_name, source, now()),
+        )
+        row = conn.execute("SELECT * FROM images WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        return row_to_image(row)
+
+
+def guest_allowed(conn: sqlite3.Connection, token: str) -> bool:
+    return (
+        get_setting(conn, "guest_enabled", "0") == "1"
+        and secrets.compare_digest(token, get_setting(conn, "guest_token", ""))
+    )
+
+
+def enforce_guest_rate_limit(conn: sqlite3.Connection, token: str, remote_addr: str) -> None:
+    cutoff = now() - GUEST_UPLOAD_WINDOW_SECONDS
+    conn.execute("DELETE FROM guest_uploads WHERE uploaded_at < ?", (cutoff,))
+    count = conn.execute(
+        """
+        SELECT COUNT(*) AS count
+        FROM guest_uploads
+        WHERE token = ? AND remote_addr = ? AND uploaded_at >= ?
+        """,
+        (token, remote_addr, cutoff),
+    ).fetchone()["count"]
+    if count >= GUEST_UPLOAD_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many guest uploads. Try again later.")
+    conn.execute(
+        "INSERT INTO guest_uploads (token, remote_addr, uploaded_at) VALUES (?, ?, ?)",
+        (token, remote_addr, now()),
+    )
+
+
+@app.get("/", response_class=HTMLResponse)
+def root() -> str:
+    return '<meta http-equiv="refresh" content="0; url=/admin">'
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin() -> str:
+    return (STATIC_DIR / "admin.html").read_text()
+
+
+@app.get("/guest/{token}", response_class=HTMLResponse)
+def guest(token: str) -> str:
+    return (STATIC_DIR / "guest.html").read_text().replace("__GUEST_TOKEN__", token)
+
+
+@app.get("/frame", response_class=HTMLResponse)
+def frame() -> str:
+    return (STATIC_DIR / "frame.html").read_text()
+
+
+@app.get("/api/images")
+def list_images(x_pinboard_owner_token: str | None = Header(default=None)) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM images
+            ORDER BY created_at DESC, id DESC
+            """
+        ).fetchall()
+        return {"images": [row_to_image(row) for row in rows]}
+
+
+@app.post("/api/images")
+async def upload_image(
+    file: UploadFile = File(...),
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Upload was empty.")
+    return {"image": save_upload(file, content)}
+
+
+@app.delete("/api/images/{image_id}")
+def delete_image(
+    image_id: int,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    with db() as conn:
+        row = conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Image not found.")
+        conn.execute("UPDATE images SET status = 'deleted' WHERE id = ?", (image_id,))
+        state = conn.execute("SELECT * FROM slideshow_state WHERE id = 1").fetchone()
+        if state["current_image_id"] == image_id or state["push_next_image_id"] == image_id:
+            conn.execute(
+                """
+                UPDATE slideshow_state
+                SET current_image_id = NULL, push_next_image_id = NULL, last_changed_at = 0
+                WHERE id = 1
+                """
+            )
+        return {"ok": True}
+
+
+@app.post("/api/images/{image_id}/push-next")
+def push_next(
+    image_id: int,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    with db() as conn:
+        row = conn.execute(
+            "SELECT * FROM images WHERE id = ? AND status = 'active'",
+            (image_id,),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Image not found.")
+        conn.execute(
+            "UPDATE slideshow_state SET push_next_image_id = ? WHERE id = 1",
+            (image_id,),
+        )
+        return {"ok": True, "image": row_to_image(row)}
+
+
+@app.post("/api/images/{image_id}/hide")
+def hide_image(
+    image_id: int,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    with db() as conn:
+        row = conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Image not found.")
+        conn.execute("UPDATE images SET status = 'hidden' WHERE id = ?", (image_id,))
+        return {"ok": True}
+
+
+@app.post("/api/images/{image_id}/restore")
+def restore_image(
+    image_id: int,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    with db() as conn:
+        row = conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Image not found.")
+        conn.execute("UPDATE images SET status = 'active' WHERE id = ?", (image_id,))
+        return {"ok": True}
+
+
+@app.post("/api/guest/{token}/images")
+async def guest_upload(token: str, request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Upload was empty.")
+    remote_addr = request.client.host if request.client else "unknown"
+    with db() as conn:
+        if not guest_allowed(conn, token):
+            raise HTTPException(status_code=404, detail="Guest upload link is disabled.")
+        enforce_guest_rate_limit(conn, token, remote_addr)
+    image = save_upload(file, content, source="guest-link")
+    with db() as conn:
+        conn.execute("UPDATE slideshow_state SET push_next_image_id = ? WHERE id = 1", (image["id"],))
+    return {"ok": True, "image": image}
+
+
+@app.get("/api/settings")
+def get_settings(
+    request: Request,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    with db() as conn:
+        return {"settings": settings_payload(conn, request)}
+
+
+@app.patch("/api/settings")
+async def update_settings(
+    request: Request,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    body = await request.json()
+    with db() as conn:
+        if "slide_seconds" in body:
+            value = max(5, min(120, int(body["slide_seconds"])))
+            set_setting(conn, "slide_seconds", str(value))
+        if "backdrop_blur_px" in body:
+            value = max(0, min(24, int(body["backdrop_blur_px"])))
+            set_setting(conn, "backdrop_blur_px", str(value))
+        if "backdrop_brightness" in body:
+            value = max(0.25, min(1.0, float(body["backdrop_brightness"])))
+            set_setting(conn, "backdrop_brightness", str(value))
+        if "guest_enabled" in body:
+            set_setting(conn, "guest_enabled", "1" if bool(body["guest_enabled"]) else "0")
+        return {"settings": settings_payload(conn, request)}
+
+
+@app.post("/api/settings/guest-token")
+def regenerate_guest_token(
+    request: Request,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    with db() as conn:
+        set_setting(conn, "guest_token", secrets.token_urlsafe(16))
+        return {"settings": settings_payload(conn, request)}
+
+
+@app.get("/api/qr.svg")
+def qr_svg(data: str) -> Response:
+    if not data:
+        raise HTTPException(status_code=400, detail="Missing QR data.")
+    try:
+        import qrcode
+        import qrcode.image.svg
+
+        factory = qrcode.image.svg.SvgPathImage
+        image = qrcode.make(data, image_factory=factory, border=2)
+        buffer = BytesIO()
+        image.save(buffer)
+        svg = buffer.getvalue()
+    except Exception:
+        escaped = data.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320">'
+            '<rect width="100%" height="100%" fill="white"/>'
+            f'<text x="16" y="32" font-size="14" fill="black">{escaped}</text>'
+            "</svg>"
+        ).encode()
+    return Response(content=svg, media_type="image/svg+xml")
+
+
+@app.get("/api/slideshow/current")
+def slideshow_current() -> dict[str, Any]:
+    with db() as conn:
+        image = get_current_image(conn)
+        slide_seconds = int(get_setting(conn, "slide_seconds", str(DEFAULT_SLIDE_SECONDS)))
+        backdrop_blur_px = int(get_setting(conn, "backdrop_blur_px", "8"))
+        backdrop_brightness = float(get_setting(conn, "backdrop_brightness", "0.68"))
+        return {
+            "image": image,
+            "slide_seconds": slide_seconds,
+            "display": {
+                "backdrop_blur_px": backdrop_blur_px,
+                "backdrop_brightness": backdrop_brightness,
+            },
+            "server_time": now(),
+        }

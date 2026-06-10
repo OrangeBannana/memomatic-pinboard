@@ -65,12 +65,13 @@ The TFT uses an ADS7846 resistive touchscreen controller on SPI0.1 (CS=1, GPIO17
 
 **Coordinate reading** (`app/spi_touch_read.c`): C program that maps `/dev/mem` SPI0 registers, busy-waits for fbcp's DMA to finish a frame (SPI TA: 1→0 transition), then reads 4 averaged ADS7846 samples in the ~2 ms inter-frame gap. Python cannot catch this window reliably due to GIL overhead; compiled C busy-wait can. Falls back to `"err"` if the read fails; `touch_bridge.py` falls back to position (240, 100) in that case.
 
-**Calibration** (from `/etc/X11/xorg.conf.d/99-calibration.conf`):
-- `Calibration "3936 227 268 3880"` + `SwapAxes "1"`
-- Physical Y channel (ADS7846 cmd 0x90) → screen X: `(raw - 268) / (3880 - 268) * 480`
-- Physical X channel (ADS7846 cmd 0xD0) → screen Y: `(raw - 3936) / (227 - 3936) * 320`
+**Calibration** (measured empirically via `app/raw_touch.py` 4-corner test on this device):
+- `Calibration "1839 263 212 1857"` + `SwapAxes "1"` (in `/etc/X11/xorg.conf.d/99-calibration.conf`)
+- Physical Y channel (ADS7846 cmd 0x90) → screen X: `(raw - 212) / (1857 - 212) * 480`
+- Physical X channel (ADS7846 cmd 0xD0) → screen Y: `(raw - 1839) / (263 - 1839) * 320`
 - X11 display is 480×320 (confirmed: xdotool screen centre = 240,160)
-- If touch position is consistently off, adjust the four constants in `spi_touch_read.c` and redeploy
+- Corner ADC values: TL ry=220 rx=1872 / TR ry=1841 rx=1806 / BR ry=1872 rx=260 / BL ry=203 rx=266
+- If touch position is consistently off, re-run `sudo python3 app/raw_touch.py`, touch 4 corners, and update the four CAL_* constants in `spi_touch_read.c` and redeploy
 
 **Frame menu interaction model** (`frame.html`):
 - **Short tap anywhere** → show menu (if hidden) | immediately close menu (if visible)

@@ -57,11 +57,13 @@
 #define CMD_Y  0x90   /* physical Y axis → screen X */
 #define CMD_X  0xD0   /* physical X axis → screen Y */
 
-/* Calibration constants from /etc/X11/xorg.conf.d/99-calibration.conf */
-#define CAL_Y_MIN   268
-#define CAL_Y_MAX  3880
-#define CAL_X_MIN  3936
-#define CAL_X_MAX   227   /* < MIN — axis is inverted */
+/* Calibration constants derived from 4-corner ADC measurement on this device.
+ * ry (CMD_Y, physical Y channel) → screen X:  left≈212, right≈1857
+ * rx (CMD_X, physical X channel) → screen Y:  top≈1839, bottom≈263 (inverted) */
+#define CAL_Y_MIN   212
+#define CAL_Y_MAX  1857
+#define CAL_X_MIN  1839
+#define CAL_X_MAX   263   /* < MIN — axis is inverted */
 #define SCREEN_W    480
 #define SCREEN_H    320
 

@@ -1,7 +1,7 @@
 [Unit]
 Description=Memomatic Pinboard web app
-After=network-online.target
-Wants=network-online.target
+After=network.target
+Wants=network.target
 
 [Service]
 Type=simple

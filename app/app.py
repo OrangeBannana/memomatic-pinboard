@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
@@ -32,6 +33,64 @@ ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 GUEST_UPLOAD_LIMIT = 5
 GUEST_UPLOAD_WINDOW_SECONDS = 10 * 60
+
+BUILTIN_SCHEMES: list[dict] = [
+    {
+        "name": "Dark Violet",
+        "builtin": True,
+        "tokens": {
+            "--accent":      "#7c6af5",
+            "--accent-dim":  "rgba(124, 106, 245, 0.16)",
+            "--bg":          "#0b0b0e",
+            "--glass-bg":    "rgba(20, 20, 28, 0.82)",
+            "--glass-border":"rgba(255, 255, 255, 0.10)",
+            "--text":        "#ede9e1",
+            "--text-muted":  "rgba(237, 233, 225, 0.58)",
+            "--text-subtle": "rgba(237, 233, 225, 0.30)",
+            "--line":        "rgba(255, 255, 255, 0.08)",
+            "--danger":      "#e85454",
+            "--danger-dim":  "rgba(232, 84, 84, 0.14)",
+            "--success":     "#52c47a",
+        },
+    },
+    {
+        "name": "Dark Amber",
+        "builtin": True,
+        "tokens": {
+            "--accent":      "#f0a030",
+            "--accent-dim":  "rgba(240, 160, 48, 0.16)",
+            "--bg":          "#0d0b08",
+            "--glass-bg":    "rgba(26, 22, 16, 0.82)",
+            "--glass-border":"rgba(255, 255, 255, 0.10)",
+            "--text":        "#f0ebe0",
+            "--text-muted":  "rgba(240, 235, 224, 0.58)",
+            "--text-subtle": "rgba(240, 235, 224, 0.30)",
+            "--line":        "rgba(255, 255, 255, 0.08)",
+            "--danger":      "#e85454",
+            "--danger-dim":  "rgba(232, 84, 84, 0.14)",
+            "--success":     "#52c47a",
+        },
+    },
+    {
+        "name": "Dark Teal",
+        "builtin": True,
+        "tokens": {
+            "--accent":      "#2dd4bf",
+            "--accent-dim":  "rgba(45, 212, 191, 0.16)",
+            "--bg":          "#080d0d",
+            "--glass-bg":    "rgba(12, 26, 24, 0.82)",
+            "--glass-border":"rgba(255, 255, 255, 0.10)",
+            "--text":        "#e8f0ef",
+            "--text-muted":  "rgba(232, 240, 239, 0.58)",
+            "--text-subtle": "rgba(232, 240, 239, 0.30)",
+            "--line":        "rgba(255, 255, 255, 0.08)",
+            "--danger":      "#e85454",
+            "--danger-dim":  "rgba(232, 84, 84, 0.14)",
+            "--success":     "#52c47a",
+        },
+    },
+]
+BUILTIN_SCHEME_NAMES: set[str] = {s["name"] for s in BUILTIN_SCHEMES}
 
 
 app = FastAPI(title="Memomatic Pinboard")
@@ -124,6 +183,8 @@ def init_db() -> None:
             "guest_enabled": "0",
             "guest_token": secrets.token_urlsafe(16),
             "message_display_seconds": "8",
+            "color_schemes": "[]",
+            "active_color_scheme": "Dark Violet",
         }
         for key, value in defaults.items():
             conn.execute(
@@ -204,6 +265,27 @@ def set_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
         """,
         (key, value),
     )
+
+
+def get_custom_schemes(conn: sqlite3.Connection) -> list[dict]:
+    raw = get_setting(conn, "color_schemes", "[]")
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def get_all_schemes(conn: sqlite3.Connection) -> list[dict]:
+    custom = [s for s in get_custom_schemes(conn) if s.get("name") not in BUILTIN_SCHEME_NAMES]
+    return BUILTIN_SCHEMES + custom
+
+
+def get_active_scheme(conn: sqlite3.Connection) -> dict:
+    active_name = get_setting(conn, "active_color_scheme", "Dark Violet")
+    for scheme in get_all_schemes(conn):
+        if scheme["name"] == active_name:
+            return scheme
+    return BUILTIN_SCHEMES[0]
 
 
 def settings_payload(conn: sqlite3.Connection, request: Request) -> dict[str, Any]:
@@ -585,6 +667,71 @@ def regenerate_guest_token(
     with db() as conn:
         set_setting(conn, "guest_token", secrets.token_urlsafe(16))
         return {"settings": settings_payload(conn, request)}
+
+
+@app.get("/api/color-schemes")
+def list_color_schemes() -> dict[str, Any]:
+    with db() as conn:
+        return {
+            "schemes": get_all_schemes(conn),
+            "active_name": get_setting(conn, "active_color_scheme", "Dark Violet"),
+        }
+
+
+@app.post("/api/color-schemes")
+async def save_color_scheme(
+    request: Request,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    body = await request.json()
+    name = str(body.get("name", "")).strip()
+    tokens = body.get("tokens", {})
+    if not name:
+        raise HTTPException(status_code=400, detail="Scheme name is required.")
+    if name in BUILTIN_SCHEME_NAMES:
+        raise HTTPException(status_code=400, detail="Cannot modify built-in schemes.")
+    if not isinstance(tokens, dict) or not tokens:
+        raise HTTPException(status_code=400, detail="Tokens dict is required.")
+    with db() as conn:
+        custom = get_custom_schemes(conn)
+        for i, s in enumerate(custom):
+            if s.get("name") == name:
+                custom[i] = {"name": name, "builtin": False, "tokens": tokens}
+                break
+        else:
+            custom.append({"name": name, "builtin": False, "tokens": tokens})
+        set_setting(conn, "color_schemes", json.dumps(custom))
+        return {"ok": True, "scheme": {"name": name, "builtin": False, "tokens": tokens}}
+
+
+@app.delete("/api/color-schemes/{name}")
+def delete_color_scheme(
+    name: str,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    if name in BUILTIN_SCHEME_NAMES:
+        raise HTTPException(status_code=400, detail="Cannot delete built-in schemes.")
+    with db() as conn:
+        custom = [s for s in get_custom_schemes(conn) if s.get("name") != name]
+        set_setting(conn, "color_schemes", json.dumps(custom))
+        if get_setting(conn, "active_color_scheme", "") == name:
+            set_setting(conn, "active_color_scheme", "Dark Violet")
+        return {"ok": True}
+
+
+@app.post("/api/color-schemes/{name}/activate")
+def activate_color_scheme(
+    name: str,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    with db() as conn:
+        if not any(s["name"] == name for s in get_all_schemes(conn)):
+            raise HTTPException(status_code=404, detail="Scheme not found.")
+        set_setting(conn, "active_color_scheme", name)
+        return {"ok": True, "scheme": get_active_scheme(conn)}
 
 
 @app.get("/api/qr.svg")

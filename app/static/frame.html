@@ -339,6 +339,14 @@
   </div>
 
   <script>
+    (async () => {
+      try {
+        const d = await fetch('/api/color-schemes').then(r => r.json());
+        const active = (d.schemes||[]).find(s => s.name === d.active_name) || (d.schemes||[])[0];
+        if (active?.tokens) for (const [p,v] of Object.entries(active.tokens)) document.documentElement.style.setProperty(p,v);
+      } catch(_) {}
+    })();
+
     // ── Slideshow ──────────────────────────────────────────────────────────
     const slides = [document.getElementById('slide-a'), document.getElementById('slide-b')];
     const empty = document.getElementById('empty');

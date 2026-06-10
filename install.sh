@@ -40,6 +40,8 @@ install -m 0755 -o "$APP_USER" -g "$APP_USER" app/kiosk.sh "$PINBOARD_HOME/app/k
 install -m 0755 -o root -g root app/touch_bridge.py "$PINBOARD_HOME/app/touch_bridge.py"
 install -m 0755 -o root -g root app/touch_test.py "$PINBOARD_HOME/app/touch_test.py"
 install -m 0755 -o root -g root app/raw_touch.py "$PINBOARD_HOME/app/raw_touch.py"
+install -m 0755 -o root -g root app/show_splash.py "$PINBOARD_HOME/app/show_splash.py"
+install -m 0644 -o root -g root app/boot_splash.png "$PINBOARD_HOME/app/boot_splash.png"
 install -m 0644 -o "$APP_USER" -g "$APP_USER" app/static/admin.html "$PINBOARD_HOME/app/static/admin.html"
 install -m 0644 -o "$APP_USER" -g "$APP_USER" app/static/frame.html "$PINBOARD_HOME/app/static/frame.html"
 install -m 0644 -o "$APP_USER" -g "$APP_USER" app/static/guest.html "$PINBOARD_HOME/app/static/guest.html"
@@ -48,6 +50,7 @@ sed "s/^Environment=PINBOARD_OWNER_TOKEN=.*/Environment=PINBOARD_OWNER_TOKEN=$OW
   systemd/pinboard-app.service > /etc/systemd/system/pinboard-app.service
 install -m 0644 systemd/pinboard-kiosk.service /etc/systemd/system/pinboard-kiosk.service
 install -m 0644 systemd/pinboard-touch.service /etc/systemd/system/pinboard-touch.service
+install -m 0644 systemd/pinboard-splash.service /etc/systemd/system/pinboard-splash.service
 
 install -d /etc/X11/xorg.conf.d
 cat >/etc/X11/Xwrapper.config <<'EOF'
@@ -84,6 +87,7 @@ hostnamectl set-hostname memomatic
 systemctl daemon-reload
 systemctl enable avahi-daemon.service
 systemctl restart avahi-daemon.service
+systemctl enable pinboard-splash.service
 systemctl enable pinboard-app.service
 systemctl enable pinboard-kiosk.service
 systemctl enable pinboard-touch.service

@@ -1,0 +1,14 @@
+[Unit]
+Description=Memomatic Pinboard boot splash
+# Run after the TFT mirror is up so the image appears on the screen
+After=fbcp-ili9341.service
+# Finish before the kiosk claims the framebuffer
+Before=pinboard-kiosk.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=no
+ExecStart=/usr/bin/python3 /home/memomatic/pinboard/app/show_splash.py
+
+[Install]
+WantedBy=multi-user.target

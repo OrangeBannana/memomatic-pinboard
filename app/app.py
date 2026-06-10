@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 import secrets
 import sqlite3
@@ -327,9 +328,7 @@ def save_upload(file: UploadFile, content: bytes, source: str = "wifi-owner") ->
         with Image.open(original_path) as img:
             img = ImageOps.exif_transpose(img)
             img.thumbnail(DISPLAY_MAX_SIZE, Image.Resampling.LANCZOS)
-            if img.mode not in ("RGB", "L"):
-                img = img.convert("RGB")
-            elif img.mode == "L":
+            if img.mode != "RGB":
                 img = img.convert("RGB")
             img.save(display_path, "JPEG", quality=88, optimize=True)
     except UnidentifiedImageError as exc:
@@ -719,11 +718,9 @@ async def connect_network(
 
 @app.get("/api/network/ip")
 async def get_device_ip() -> dict[str, Any]:
-    """Returns the device's primary outbound IP. No auth — visible on LAN anyway."""
-    import socket as _socket
     ip = "unknown"
     try:
-        s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()

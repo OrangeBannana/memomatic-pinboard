@@ -316,7 +316,6 @@
     const menuClose = document.getElementById('menu-close');
     const wifiOption = document.getElementById('wifi-option');
     const networkPanel = document.getElementById('network-panel');
-    const networkForm = document.getElementById('network-panel');
     const networkSsid = document.getElementById('network-ssid');
     const networkPassword = document.getElementById('network-password');
     const networkHidden = document.getElementById('network-hidden');
@@ -581,7 +580,7 @@
       scheduleMenuHide();
     });
 
-    networkForm.addEventListener('submit', connectNetwork);
+    networkPanel.addEventListener('submit', connectNetwork);
 
     refresh();
     pollInterval = window.setInterval(() => refresh(), pollMs);

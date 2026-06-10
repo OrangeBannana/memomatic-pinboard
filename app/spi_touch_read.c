@@ -4,8 +4,13 @@
  * one averaged X,Y sample from the ADS7846 in the inter-frame gap.
  * Because the read happens between frames it does not corrupt the display.
  *
- * Outputs "X Y\n"  (xdotool screen coordinates, X11 480×320)
- * or      "err\n"  on failure (caller falls back to a fixed position).
+ * Outputs to stdout:
+ *   "X Y\n"   (calibrated screen coordinates)
+ *   "err\n"   on failure
+ *
+ * Always writes diagnostic lines to stderr:
+ *   "ta_seen=0|1"     whether TA=1 was observed (fbcp running indicator)
+ *   "raw Y X n"       raw ADC values and sample count (or "raw - - 0" on filter fail)
  *
  * Build:  gcc -O2 -o spi_touch_read spi_touch_read.c
  *
@@ -49,23 +54,32 @@
 #define SCREEN_W    480
 #define SCREEN_H    320
 
+/* Valid-touch ADC range — values at rails (0/4095) mean pen is lifted */
+#define RAW_MIN  50
+#define RAW_MAX  4050
+
 static volatile uint32_t *spi;
 
-static inline uint32_t rd(int r)           { return spi[r]; }
-static inline void     wr(int r, uint32_t v) { spi[r] = v;   }
+static inline uint32_t rd(int r)             { return spi[r]; }
+static inline void      wr(int r, uint32_t v) { spi[r] = v;   }
 
 /* Busy-wait until fbcp finishes the current frame (TA goes 1 → 0).
- * If TA is never seen high (fbcp idle/not running), returns immediately. */
-static void wait_interframe(void)
+ * If TA is never seen high (fbcp idle/not running), returns 0.
+ * Returns 1 if a proper 1→0 transition was observed. */
+static int wait_interframe(void)
 {
+    int ta_seen = 0;
     /* Wait for TA=1 (frame in progress) — skip if never seen */
     for (long i = 0; i < 5000000L; i++) {
-        if (rd(SPI_CS) & CS_TA) break;
+        if (rd(SPI_CS) & CS_TA) { ta_seen = 1; break; }
     }
-    /* Wait for TA=0 (frame finished — we are now in the inter-frame gap) */
-    for (long i = 0; i < 50000000L; i++) {
-        if (!(rd(SPI_CS) & CS_TA)) break;
+    if (ta_seen) {
+        /* Wait for TA=0 (frame finished — we are now in the inter-frame gap) */
+        for (long i = 0; i < 50000000L; i++) {
+            if (!(rd(SPI_CS) & CS_TA)) break;
+        }
     }
+    return ta_seen;
 }
 
 /* Send a 3-byte ADS7846 command on CS1 and return the 12-bit result. */
@@ -95,29 +109,33 @@ static int ads_read(uint8_t cmd)
 int main(void)
 {
     int fd = open("/dev/mem", O_RDWR | O_SYNC);
-    if (fd < 0) { puts("err"); return 1; }
+    if (fd < 0) { fputs("ta_seen=?\nraw - - 0\n", stderr); puts("err"); return 1; }
 
     void *p = mmap(NULL, PAGE_SIZE, PROT_READ | PROT_WRITE,
                    MAP_SHARED, fd, SPI0_PHYS);
     close(fd);
-    if (p == MAP_FAILED) { puts("err"); return 1; }
+    if (p == MAP_FAILED) { fputs("ta_seen=?\nraw - - 0\n", stderr); puts("err"); return 1; }
     spi = (volatile uint32_t *)p;
 
-    /* Sync to inter-frame gap, then take up to 4 averaged samples.
-     * Save SPI_CLK first: fbcp sets it once at init (typically CDIV=4 for
-     * 62.5 MHz) and never resets it per frame.  If we leave CLK=250 (1 MHz)
-     * after our read, every subsequent fbcp frame transmits at 1 MHz and the
-     * display scans slowly.  Restore it before returning. */
-    wait_interframe();
+    /* Sync to inter-frame gap (or proceed immediately if fbcp not running). */
+    int ta_seen = wait_interframe();
+    fprintf(stderr, "ta_seen=%d\n", ta_seen);
 
+    /* Save fbcp's SPI clock divider so we can restore it after our read.
+     * If fbcp set CLK=4 (62.5 MHz) and we leave it at 250 (1 MHz),
+     * subsequent fbcp frames transmit slowly and the display scans. */
     uint32_t saved_clk = rd(SPI_CLK);
 
+    /* Take up to 4 averaged samples; report each raw pair to stderr. */
     long sum_y = 0, sum_x = 0;
     int  n = 0;
     for (int i = 0; i < 4; i++) {
         int ry = ads_read(CMD_Y);  /* physical Y → screen X */
         int rx = ads_read(CMD_X);  /* physical X → screen Y */
-        if (ry > 50 && ry < 4050 && rx > 50 && rx < 4050) {
+        fprintf(stderr, "sample%d ry=%d rx=%d %s\n", i, ry, rx,
+                (ry > RAW_MIN && ry < RAW_MAX && rx > RAW_MIN && rx < RAW_MAX)
+                ? "ok" : "filtered");
+        if (ry > RAW_MIN && ry < RAW_MAX && rx > RAW_MIN && rx < RAW_MAX) {
             sum_y += ry;
             sum_x += rx;
             n++;
@@ -128,10 +146,15 @@ int main(void)
     wr(SPI_CLK, saved_clk);
     wr(SPI_CS,  0);   /* deassert everything; fbcp will reassert CS0 on next frame */
 
-    if (n == 0) { puts("err"); return 1; }
+    if (n == 0) {
+        fputs("raw - - 0\n", stderr);
+        puts("err");
+        return 1;
+    }
 
     double ay = (double)sum_y / n;
     double ax = (double)sum_x / n;
+    fprintf(stderr, "raw %.0f %.0f %d\n", ay, ax, n);
 
     /* physical Y (CMD_Y) → screen X: range CAL_Y_MIN..CAL_Y_MAX → 0..SCREEN_W */
     int sx = (int)((ay - CAL_Y_MIN) / (double)(CAL_Y_MAX - CAL_Y_MIN) * SCREEN_W + 0.5);

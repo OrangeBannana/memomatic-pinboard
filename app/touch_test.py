@@ -251,18 +251,20 @@ def compile_helper():
 
 
 def call_spi_touch():
-    """Run spi_touch_read. Returns (sx, sy) in screen coords or None."""
+    """Run spi_touch_read. Returns (sx, sy, diag) on success or (None, None, diag).
+    diag is the stderr output showing ta_seen and raw ADC values per sample."""
     try:
         r = subprocess.run([HELPER], capture_output=True, timeout=0.5)
+        diag = r.stderr.decode().strip().replace("\n", "  ")
         if r.returncode == 0:
             parts = r.stdout.decode().strip().split()
             if len(parts) == 2:
                 sx, sy = int(parts[0]), int(parts[1])
                 if 0 <= sx < FB_W and 0 <= sy < FB_H:
-                    return sx, sy
-    except Exception:
-        pass
-    return None
+                    return sx, sy, diag
+        return None, None, diag
+    except Exception as e:
+        return None, None, f"exception={e}"
 
 
 # ── System check ──────────────────────────────────────────────────────────────
@@ -457,15 +459,30 @@ def run_gpio(fb, duration):
         fail(f"GPIO{GPIO_SYSFS} not available: {msg}")
         return 0
 
-    if not os.path.exists(HELPER):
+    # Always recompile from source so the binary matches the current .c file
+    if os.path.exists(HELPER_SRC):
         ok_c, msg_c = compile_helper()
-        if not ok_c:
-            fail(f"spi_touch_read unavailable: {msg_c}")
+        if ok_c:
+            ok(f"Compiled spi_touch_read  ({msg_c})")
+        else:
+            fail(f"Compile failed: {msg_c}")
             return 0
-        ok("Compiled spi_touch_read on the fly")
+    elif not os.path.exists(HELPER):
+        fail(f"spi_touch_read binary and source both missing")
+        return 0
+
+    # Warn if fbcp is not running — spi_touch_read needs it
+    r_fbcp = subprocess.run(["pgrep", "-f", "fbcp"], capture_output=True, text=True)
+    fbcp_running = r_fbcp.returncode == 0
+    if not fbcp_running:
+        warn(f"{YLW}fbcp is NOT running!{RST}")
+        info("spi_touch_read syncs to fbcp's SPI frame gaps.")
+        info("Without fbcp: TA=1 never seen, reads may return out-of-range values → err.")
+        info("Start fbcp-ili9341 or run this test while it is active.")
+        print()
 
     ok(f"Polling GPIO{GPIO_SYSFS} at 20 ms  (0=touch, 1=idle)")
-    ok(f"Coordinates via {HELPER}  (output is already calibrated screen coords)")
+    info(f"spi_touch_read stderr shows: ta_seen (fbcp detected), raw ADC per sample")
     print()
 
     prev_irq    = 1
@@ -488,11 +505,11 @@ def run_gpio(fb, duration):
         if prev_irq == 1 and irq == 0:
             touch_count += 1
             last_down = now
-            coords = call_spi_touch()
-            if coords:
+            sx, sy, diag = call_spi_touch()
+            if sx is not None:
                 spi_ok += 1
-                sx, sy = coords
-                print(f"  [{now:.4f}] {GRN}TOUCH DOWN{RST}  screen=({sx:3d},{sy:3d})", flush=True)
+                print(f"  [{now:.4f}] {GRN}TOUCH DOWN{RST}  screen=({sx:3d},{sy:3d})"
+                      f"  [{diag}]", flush=True)
                 if fb and fb.ready:
                     fb.fill(DKGRAY)
                     fb.grid()
@@ -500,8 +517,8 @@ def run_gpio(fb, duration):
             else:
                 spi_err += 1
                 print(f"  [{now:.4f}] {GRN}TOUCH DOWN{RST}  "
-                      f"{YLW}spi_touch_read=err{RST}  "
-                      f"(ok={spi_ok} err={spi_err})", flush=True)
+                      f"{YLW}err{RST}  [{diag}]"
+                      f"  (ok={spi_ok} err={spi_err})", flush=True)
 
         elif prev_irq == 0 and irq == 1:
             held = now - last_down if last_down else 0.0
@@ -515,11 +532,11 @@ def run_gpio(fb, duration):
         ok(f"GPIO: {touch_count} touch-down events  "
            f"(spi coords: {spi_ok} ok / {spi_err} err)")
         if spi_err and not spi_ok:
-            warn("spi_touch_read failed on every touch.")
-            info("fbcp must be running for the inter-frame sync to work.")
-            info("Check: pgrep -f fbcp  — if nothing, start fbcp manually.")
-            info("The ADS7846 raw-read filter (50–4050) may also be too tight;")
-            info("try touching a different screen area or adjusting pressure.")
+            warn("spi_touch_read failed on every touch — check the [diag] lines above.")
+            if not fbcp_running:
+                info("Root cause: fbcp was not running (ta_seen=0 in diag means no frame sync).")
+            info("If raw values show 0 or 4095: pen lifted before SPI read completed.")
+            info("If raw values show mid-range but filtered: widen RAW_MIN/RAW_MAX in .c")
     else:
         warn(f"GPIO: no touches detected in {duration}s")
         info("Possible: ads7846 driver still bound and owns T_IRQ interrupt,")

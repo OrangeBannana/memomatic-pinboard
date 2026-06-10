@@ -267,6 +267,33 @@
       </section>
 
       <section class="panel">
+        <div class="row">
+          <h2>Network</h2>
+          <button id="refresh-networks" class="secondary" type="button">Refresh Wi-Fi</button>
+        </div>
+        <div class="subtle" style="margin-top: 8px;">Join a Wi-Fi network from the admin page. The Pi will connect using NetworkManager.</div>
+        <div id="network-status" class="meta" style="margin-top: 10px;"></div>
+        <div style="margin-top: 12px; display: grid; gap: 12px;">
+          <label class="setting">
+            Available networks
+            <select id="wifi-network" style="min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 10px; font: inherit; background: #fff;"></select>
+          </label>
+          <div class="controls">
+            <input id="wifi-ssid" type="text" placeholder="Or type SSID manually">
+            <input id="wifi-password" type="password" placeholder="Wi-Fi password (optional for open networks)">
+          </div>
+          <label class="row" style="justify-content: start;">
+            <input id="wifi-hidden" type="checkbox">
+            Hidden network
+          </label>
+          <div class="controls">
+            <button id="connect-network" type="button">Connect Wi-Fi</button>
+            <button id="save-network" class="secondary" type="button">Save for later</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
         <h2>Display Settings</h2>
         <div class="settings-grid">
           <label class="setting">
@@ -280,6 +307,10 @@
           <label class="setting">
             Background brightness
             <input id="backdrop-brightness" type="number" min="0.25" max="1" step="0.05">
+          </label>
+          <label class="setting">
+            Message display seconds
+            <input id="message-display-seconds" type="number" min="3" max="30" step="1">
           </label>
         </div>
         <button id="save-settings" type="button" style="margin-top: 12px;">Save Display Settings</button>
@@ -314,10 +345,19 @@
     const guestUrl = document.getElementById('guest-url');
     const adminQr = document.getElementById('admin-qr');
     const guestQr = document.getElementById('guest-qr');
+    const refreshNetworks = document.getElementById('refresh-networks');
+    const wifiNetwork = document.getElementById('wifi-network');
+    const wifiSsid = document.getElementById('wifi-ssid');
+    const wifiPassword = document.getElementById('wifi-password');
+    const wifiHidden = document.getElementById('wifi-hidden');
+    const connectNetwork = document.getElementById('connect-network');
+    const networkStatus = document.getElementById('network-status');
     const slideSeconds = document.getElementById('slide-seconds');
     const backdropBlur = document.getElementById('backdrop-blur');
     const backdropBrightness = document.getElementById('backdrop-brightness');
+    const messageDisplaySeconds = document.getElementById('message-display-seconds');
     const saveSettings = document.getElementById('save-settings');
+    const saveNetwork = document.getElementById('save-network');
 
     let ownerToken = localStorage.getItem('pinboardOwnerToken') || '';
 
@@ -361,6 +401,34 @@
       slideSeconds.value = settings.slide_seconds;
       backdropBlur.value = settings.backdrop_blur_px;
       backdropBrightness.value = settings.backdrop_brightness;
+      messageDisplaySeconds.value = settings.message_display_seconds;
+    }
+
+    function setNetworkStatus(message) {
+      networkStatus.textContent = message || '';
+    }
+
+    async function loadWifiNetworks() {
+      setNetworkStatus('Scanning Wi-Fi networks...');
+      wifiNetwork.innerHTML = '<option value="">Scanning...</option>';
+      try {
+        const data = await api('/api/network/wifi', { cache: 'no-store' });
+        wifiNetwork.innerHTML = '';
+        const emptyOption = document.createElement('option');
+        emptyOption.value = '';
+        emptyOption.textContent = 'Select a network';
+        wifiNetwork.appendChild(emptyOption);
+        for (const network of data.networks || []) {
+          const option = document.createElement('option');
+          option.value = network.ssid;
+          option.textContent = `${network.ssid} (${network.signal}%, ${network.security || '--'})${network.active === '1' ? ' [connected]' : ''}`;
+          wifiNetwork.appendChild(option);
+        }
+        setNetworkStatus(data.networks?.length ? 'Wi-Fi networks loaded.' : 'No Wi-Fi networks found.');
+      } catch (error) {
+        wifiNetwork.innerHTML = '<option value="">Unable to scan</option>';
+        setNetworkStatus(error.message);
+      }
     }
 
     async function loadSettings() {
@@ -428,6 +496,7 @@
     async function loadAll() {
       await loadSettings();
       await loadImages();
+      await loadWifiNetworks();
       showAdmin(true);
     }
 
@@ -494,11 +563,68 @@
         body: JSON.stringify({
           slide_seconds: Number(slideSeconds.value),
           backdrop_blur_px: Number(backdropBlur.value),
-          backdrop_brightness: Number(backdropBrightness.value)
+          backdrop_brightness: Number(backdropBrightness.value),
+          message_display_seconds: Number(messageDisplaySeconds.value),
         })
       });
       applySettings(data.settings);
       setStatus('Display settings saved.');
+    });
+
+    refreshNetworks.addEventListener('click', async () => {
+      await loadWifiNetworks();
+    });
+
+    wifiNetwork.addEventListener('change', () => {
+      if (wifiNetwork.value) {
+        wifiSsid.value = wifiNetwork.value;
+      }
+    });
+
+    connectNetwork.addEventListener('click', async () => {
+      const ssid = (wifiSsid.value || wifiNetwork.value || '').trim();
+      if (!ssid) {
+        setNetworkStatus('Choose or type an SSID first.');
+        return;
+      }
+      setNetworkStatus('Connecting to Wi-Fi...');
+      try {
+        const response = await api('/api/network/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ssid,
+            password: wifiPassword.value,
+            hidden: wifiHidden.checked,
+          })
+        });
+        setNetworkStatus(response.message || `Connecting to ${ssid}...`);
+      } catch (error) {
+        setNetworkStatus(error.message);
+      }
+    });
+
+    saveNetwork.addEventListener('click', async () => {
+      const ssid = (wifiSsid.value || wifiNetwork.value || '').trim();
+      if (!ssid) {
+        setNetworkStatus('Choose or type an SSID first.');
+        return;
+      }
+      setNetworkStatus('Saving network...');
+      try {
+        const response = await api('/api/network/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ssid,
+            password: wifiPassword.value,
+            hidden: wifiHidden.checked,
+          })
+        });
+        setNetworkStatus(response.message || `Network '${ssid}' saved.`);
+      } catch (error) {
+        setNetworkStatus(error.message);
+      }
     });
 
     if (ownerToken) {

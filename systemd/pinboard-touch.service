@@ -1,0 +1,15 @@
+[Unit]
+Description=Memomatic touch bridge (ADS7846 GPIO polling + SPI coord reader)
+
+[Service]
+Type=simple
+User=root
+ExecStartPre=/bin/sh -c 'gcc -O2 -o /home/memomatic/pinboard/app/spi_touch_read /home/memomatic/pinboard/app/spi_touch_read.c 2>/dev/null; true'
+ExecStartPre=/bin/sh -c 'echo spi0.1 | tee /sys/bus/spi/drivers/ads7846/unbind 2>/dev/null; echo 529 | tee /sys/class/gpio/export 2>/dev/null; echo in | tee /sys/class/gpio/gpio529/direction 2>/dev/null; true'
+ExecStartPre=/bin/sleep 15
+ExecStart=/usr/bin/python3 /home/memomatic/pinboard/app/touch_bridge.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

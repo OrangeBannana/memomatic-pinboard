@@ -19,5 +19,9 @@ exec /usr/lib/chromium/chromium \
   --disable-infobars \
   --disable-session-crashed-bubble \
   --check-for-update-interval=31536000 \
+  --touch-events=enabled \
+  --disable-gpu \
+  --remote-debugging-port=9222 \
+  --remote-debugging-address=0.0.0.0 \
   --user-data-dir=/home/memomatic/pinboard/chromium-profile \
   --app=http://127.0.0.1:8080/frame

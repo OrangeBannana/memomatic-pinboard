@@ -37,3 +37,74 @@ Useful env vars (defaults in [app/app.py](app/app.py:18)): `PINBOARD_HOME` (data
 - Keep the backend in the single `app.py`; keep UIs as standalone static HTML (no bundler). If you add a static file, also add it to the `install -m 0644 ... static/...` lines in [install.sh](install.sh) so it deploys to the Pi.
 - New images are stored as a fresh UUID; the user's original filename is kept only as `original_name` metadata, never used as a path.
 - The `qrcode` and `Pillow` imports are deferred/optional in spots (`qr.svg` falls back to a text SVG if `qrcode` is missing) — preserve that graceful degradation for the Pi's apt-packaged environment.
+- **All files in this repo use LF line endings (not CRLF).** The Pi is Linux; CRLF in shell scripts causes `\r: command not found`. If editing on Windows, ensure your editor/git is set to LF. Before any deploy, verify with `file install.sh app/kiosk.sh` — output should say "ASCII text executable", not "with CRLF line terminators". Fix with `sed -i 's/\r//' <file>`.
+
+## WiFi / network features
+
+`POST /api/network/connect`, `GET /api/network/wifi`, and `GET /api/network/ip` are the network endpoints. The first two use `nmcli` via `sudo` (sudoers must allow `memomatic` to run `/usr/bin/nmcli` without a password — this is set up by `install.sh`).
+
+`GET /api/network/ip` requires no auth and returns `{"ip": "..."}` with the Pi's primary outbound IP (using a UDP trick against 8.8.8.8). Used by `frame.html` to display the IP in the menu.
+
+The connect endpoint accepts **either** a valid owner token (for the admin page) **or** a request originating from localhost 127.0.0.1/::1 (for the on-device kiosk menu). This dual-auth is intentional — the frame page at `/frame` has no owner token but runs on the device itself.
+
+## On-device touch system
+
+The TFT uses an ADS7846 resistive touchscreen controller on SPI0.1 (CS=1, GPIO17=T_IRQ). The display driver (fbcp-ili9341, "safe" build) accesses the SPI hardware **directly via `/dev/mem`**, bypassing the kernel SPI subsystem. This makes the ADS7846 kernel driver incompatible: its `spi_sync()` calls time out waiting for hardware the fbcp DMA holds, corrupting SPI state and freezing the display.
+
+**The solution** (`systemd/pinboard-touch.service`):
+1. `ExecStartPre`: compile `app/spi_touch_read.c` → `app/spi_touch_read` binary
+2. `ExecStartPre`: unbind `ads7846` driver (`/sys/bus/spi/drivers/ads7846/unbind`) so no kernel SPI transactions occur on touch
+3. `ExecStartPre`: sleep 15 s to let Xorg/Chromium start first
+4. `ExecStart`: run `app/touch_bridge.py`
+
+**Touch detection** (`app/touch_bridge.py`): polls `/sys/class/gpio/gpio529/value` (BCM17, active-low T_IRQ) every 20 ms. On touch-down (1→0): calls `spi_touch_read` for coordinates, then `xdotool mousemove X Y mousedown 1`. On touch-up (0→1): `xdotool mouseup 1`. Sending real mousedown/mouseup (not a synthetic click) lets `frame.html` measure actual hold duration for long-press detection.
+
+**Coordinate reading** (`app/spi_touch_read.c`): C program that maps `/dev/mem` SPI0 registers, busy-waits for fbcp's DMA to finish a frame (SPI TA: 1→0 transition), then reads 4 averaged ADS7846 samples in the ~2 ms inter-frame gap. Python cannot catch this window reliably due to GIL overhead; compiled C busy-wait can. Falls back to `"err"` if the read fails; `touch_bridge.py` falls back to position (240, 100) in that case.
+
+**Calibration** (from `/etc/X11/xorg.conf.d/99-calibration.conf`):
+- `Calibration "3936 227 268 3880"` + `SwapAxes "1"`
+- Physical Y channel (ADS7846 cmd 0x90) → screen X: `(raw - 268) / (3880 - 268) * 480`
+- Physical X channel (ADS7846 cmd 0xD0) → screen Y: `(raw - 3936) / (227 - 3936) * 320`
+- X11 display is 480×320 (confirmed: xdotool screen centre = 240,160)
+- If touch position is consistently off, adjust the four constants in `spi_touch_read.c` and redeploy
+
+**Frame menu interaction model** (`frame.html`):
+- **Short tap anywhere** → show menu (if hidden) | immediately close menu (if visible)
+- **Hold ≥ 2 s anywhere** → open WiFi panel directly (no need to tap a button)
+- Menu note shows current device IP (fetched from `GET /api/network/ip` on each open)
+- WiFi panel auto-hides after 60 s (vs 3.5 s for the base menu) to allow time for keyboard entry
+- `user-select: none` on body prevents text-selection artefacts from long-press hold
+
+Implementation notes:
+- `pointerdown` records the gesture start and shows the menu immediately if hidden
+- `pointerup` acts: short tap outside `.menu-panel` → `hideMenu()`; long press → `openNetworkPanel()`
+- A `click` listener is a fallback for drivers that emit click without pointer events
+- Do **not** add a separate `touchstart` capture listener — it causes duplicate events
+
+## Deploying to the Pi
+
+Pi credentials: user `memomatic`, password `memes`. **The IP changes between sessions** — verify with `hostname -I` on the Pi or check your router. Update `PI_HOST` in `deploy.py` before running.
+
+**`deploy.py`** (in repo root) is a self-contained Python deployment script. It:
+1. Verifies SHA256 checksums of all source files locally before uploading
+2. Uploads via SFTP (paramiko)
+3. Verifies checksums again on the Pi after upload to catch transfer corruption
+4. Copies systemd units into place, reloads systemd, restarts all three services
+
+Run it with `py deploy.py` (requires `pip install paramiko` first) or double-click `deploy.bat` which does both steps. The `spi_touch_read` binary is **not** deployed directly — it is compiled on the Pi by `ExecStartPre` in the touch service each time it starts.
+
+**File corruption note:** previous deployments saw files corrupted during upload. The checksum verification in `deploy.py` catches this. If a checksum fails post-upload, re-run; do not proceed with a corrupt file on the Pi.
+
+The `install.sh` script does a full install (apt packages including `build-essential` for gcc + file copy + systemd setup). Use it for first-time setup. For subsequent updates, `deploy.py` is faster.
+
+## Known working state
+
+Bugs found and fixed across development sessions:
+
+1. **Duplicate `POST /api/network/connect` route** — merged into one handler with dual-auth (owner token OR localhost).
+2. **ADS7846 driver SPI timeout** — root cause: fbcp holds SPI0 hardware via `/dev/mem`; kernel driver's `spi_sync()` times out waiting, corrupting SPI state → display freeze. Fixed by unbinding driver and using GPIO polling + C helper for coordinates.
+3. **Python SPI reads corrupting display** — Python's GIL/interpreter overhead (~100 µs per operation) is too slow to catch the ~2 ms inter-frame gap. Accessing SPI registers mid-frame deasserts CS0, corrupting fbcp's DMA → "scanning" artefacts and white screen. Fixed by moving coordinate reads to a compiled C busy-wait helper.
+4. **Touch events firing 3×** — `pointerdown`, `touchstart`, and `click` all captured, each triggering the handler. Fixed by using only `pointerdown` + `pointerup` + `click` (fallback) with a dedup timer.
+5. **Menu auto-hide during WiFi connect** — the 3.5 s timer dismissed the menu before nmcli responded. Fixed with the `connecting` flag.
+6. **Stale poll interval** — `setInterval` captured the initial `pollMs` and never updated. Fixed by storing the handle and recreating it when `pollMs` changes.
+7. **Systemd ordering cycle** — `After=pinboard-kiosk.service` in touch service created a dependency cycle. Fixed by removing the kiosk dependency.

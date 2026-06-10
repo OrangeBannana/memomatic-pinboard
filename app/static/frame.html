@@ -13,12 +13,16 @@
       background: #050506;
       color: #f5f5f2;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
     }
 
     #stage {
       position: fixed;
       inset: 0;
       background: #050506;
+      touch-action: none;
     }
 
     .slide {
@@ -56,6 +60,7 @@
       width: 100vw;
       height: 100vh;
       object-fit: contain;
+      pointer-events: none;
     }
 
     #empty {
@@ -67,6 +72,7 @@
       text-align: center;
       line-height: 1.35;
       color: #f8f5e9;
+      pointer-events: none;
     }
 
     #empty.visible {
@@ -89,6 +95,167 @@
       font-size: 15px;
       color: #cfc9b8;
     }
+
+    .menu-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 3;
+      display: grid;
+      place-items: end center;
+      padding: 18px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease;
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.38), rgba(0, 0, 0, 0.02) 55%);
+      backdrop-filter: blur(4px);
+      touch-action: manipulation;
+    }
+
+    .menu-overlay.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .menu-panel {
+      width: min(92vw, 420px);
+      border-radius: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      background: rgba(18, 18, 20, 0.58);
+      box-shadow: 0 22px 60px rgba(0, 0, 0, 0.38);
+      color: #f6f4ef;
+      overflow: hidden;
+      pointer-events: auto;
+    }
+
+    .menu-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px 16px 10px;
+    }
+
+    .menu-title {
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .menu-note {
+      padding: 0 16px 14px;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .menu-button,
+    .menu-close,
+    .menu-primary {
+      appearance: none;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font: inherit;
+      font-weight: 650;
+      padding: 10px 14px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .menu-close {
+      width: 38px;
+      height: 38px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+    }
+
+    .menu-list {
+      display: grid;
+      gap: 10px;
+      padding: 0 16px 16px;
+    }
+
+    .menu-item {
+      display: grid;
+      gap: 8px;
+    }
+
+    .menu-item p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.7);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .network-panel {
+      display: none;
+      gap: 10px;
+      padding: 0 16px 16px;
+    }
+
+    .network-panel.open {
+      display: grid;
+    }
+
+    .network-panel input[type="text"],
+    .network-panel input[type="password"] {
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      padding: 11px 12px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font: inherit;
+    }
+
+    .network-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 14px;
+    }
+
+    .network-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .network-status {
+      min-height: 18px;
+      color: rgba(255, 255, 255, 0.8);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .message-toast {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 10;
+      padding: 20px 28px;
+      background: rgba(0, 0, 0, 0.82);
+      backdrop-filter: blur(6px);
+      color: #fff;
+      font-size: 22px;
+      font-weight: 500;
+      text-align: center;
+      line-height: 1.4;
+      transform: translateY(-110%);
+      opacity: 0;
+      transition: transform 380ms cubic-bezier(0.34, 1.28, 0.64, 1), opacity 280ms ease;
+      pointer-events: none;
+    }
+
+    .message-toast.visible {
+      transform: translateY(0);
+      opacity: 1;
+    }
   </style>
 </head>
 <body>
@@ -107,6 +274,35 @@
         <p>Waiting for images</p>
       </div>
     </section>
+    <div id="message-toast" class="message-toast" aria-live="assertive"></div>
+    <div id="menu-overlay" class="menu-overlay" aria-hidden="true">
+      <div class="menu-panel" role="dialog" aria-label="Device menu">
+        <div class="menu-header">
+          <div class="menu-title">Device Menu</div>
+          <button id="menu-close" class="menu-close" type="button" aria-label="Close menu">×</button>
+        </div>
+        <div class="menu-note">Tap anywhere to close &middot; Hold 2&nbsp;s for Wi&#8209;Fi<br><span id="device-ip" style="opacity:0.55;font-size:12px"></span></div>
+        <div class="menu-list">
+          <div class="menu-item">
+            <button id="wifi-option" class="menu-button" type="button">Add network</button>
+            <p>Add a Wi-Fi network so the device can join a new connection.</p>
+          </div>
+        </div>
+        <form id="network-panel" class="network-panel">
+          <input id="network-ssid" type="text" placeholder="Network name (SSID)" autocomplete="off">
+          <input id="network-password" type="password" placeholder="Password" autocomplete="off">
+          <label class="network-row">
+            <input id="network-hidden" type="checkbox">
+            Hidden network
+          </label>
+          <div class="network-actions">
+            <button class="menu-primary" type="submit">Connect</button>
+            <button id="network-cancel" class="menu-button" type="button">Cancel</button>
+          </div>
+          <div id="network-status" class="network-status"></div>
+        </form>
+      </div>
+    </div>
   </main>
 
   <script>
@@ -115,13 +311,92 @@
       document.getElementById('slide-b')
     ];
     const empty = document.getElementById('empty');
+    const messageToast = document.getElementById('message-toast');
+    const menuOverlay = document.getElementById('menu-overlay');
+    const menuClose = document.getElementById('menu-close');
+    const wifiOption = document.getElementById('wifi-option');
+    const networkPanel = document.getElementById('network-panel');
+    const networkForm = document.getElementById('network-panel');
+    const networkSsid = document.getElementById('network-ssid');
+    const networkPassword = document.getElementById('network-password');
+    const networkHidden = document.getElementById('network-hidden');
+    const networkCancel = document.getElementById('network-cancel');
+    const networkStatus = document.getElementById('network-status');
     let currentId = null;
     let activeSlide = 0;
     let pollMs = 2000;
+    let pollInterval = null;
+    let menuTimer = null;
+    let menuVisible = false;
+    let connecting = false;
+    let currentMessageId = null;
+    let messageTimer = null;
 
     function setSlide(slide, url) {
       slide.querySelector('img').src = url;
       slide.querySelector('.backdrop').style.backgroundImage = `url("${url}")`;
+    }
+
+    function setNetworkStatus(message) {
+      networkStatus.textContent = message || '';
+    }
+
+    function showMessage(msg, durationMs) {
+      if (currentMessageId === msg.id) return;
+      currentMessageId = msg.id;
+      window.clearTimeout(messageTimer);
+      messageToast.textContent = msg.content;
+      messageToast.classList.add('visible');
+      messageTimer = window.setTimeout(async () => {
+        messageToast.classList.remove('visible');
+        currentMessageId = null;
+        try {
+          await fetch(`/api/messages/${msg.id}/shown`, { method: 'POST' });
+        } catch (_) {}
+      }, durationMs);
+    }
+
+    function hideMenu() {
+      window.clearTimeout(menuTimer);
+      menuTimer = null;
+      menuVisible = false;
+      menuOverlay.classList.remove('visible');
+      menuOverlay.setAttribute('aria-hidden', 'true');
+      networkPanel.classList.remove('open');
+    }
+
+    function scheduleMenuHide(ms) {
+      window.clearTimeout(menuTimer);
+      menuTimer = window.setTimeout(hideMenu, ms || 3500);
+    }
+
+    function showMenu() {
+      menuVisible = true;
+      menuOverlay.classList.add('visible');
+      menuOverlay.setAttribute('aria-hidden', 'false');
+      scheduleMenuHide();
+      fetch('/api/network/ip')
+        .then(r => r.json())
+        .then(d => {
+          const el = document.getElementById('device-ip');
+          if (el && d.ip && d.ip !== 'unknown') el.textContent = 'IP ' + d.ip;
+        })
+        .catch(() => {});
+    }
+
+    function toggleMenu() {
+      if (menuVisible) {
+        scheduleMenuHide();
+        return;
+      }
+      showMenu();
+    }
+
+    function openNetworkPanel() {
+      networkPanel.classList.add('open');
+      setNetworkStatus('');
+      scheduleMenuHide(60000);
+      window.setTimeout(() => networkSsid.focus(), 0);
     }
 
     async function refresh() {
@@ -132,7 +407,16 @@
           document.documentElement.style.setProperty('--backdrop-blur', `${data.display.backdrop_blur_px}px`);
           document.documentElement.style.setProperty('--backdrop-brightness', String(data.display.backdrop_brightness));
         }
-        pollMs = Math.max(1000, Math.min(5000, Math.floor((data.slide_seconds || 15) * 1000 / 4)));
+        const newPollMs = Math.max(1000, Math.min(5000, Math.floor((data.slide_seconds || 15) * 1000 / 4)));
+        if (newPollMs !== pollMs) {
+          pollMs = newPollMs;
+          if (pollInterval) window.clearInterval(pollInterval);
+          pollInterval = window.setInterval(() => refresh(), pollMs);
+        }
+        if (data.message) {
+          showMessage(data.message, (data.message_display_seconds || 8) * 1000);
+        }
+
         if (!data.image) {
           currentId = null;
           slides.forEach(slide => slide.classList.remove('visible'));
@@ -163,8 +447,144 @@
       }
     }
 
+    async function connectNetwork(event) {
+      event.preventDefault();
+      const ssid = networkSsid.value.trim();
+      const password = networkPassword.value;
+      if (!ssid) {
+        setNetworkStatus('Enter a network name.');
+        return;
+      }
+      connecting = true;
+      window.clearTimeout(menuTimer);
+      menuTimer = null;
+      setNetworkStatus('Connecting…');
+      try {
+        const response = await fetch('/api/network/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ssid,
+            password,
+            hidden: networkHidden.checked
+          })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.detail || response.statusText || 'Unable to add the network.');
+        }
+        networkSsid.value = '';
+        networkPassword.value = '';
+        networkHidden.checked = false;
+        setNetworkStatus(data.message || 'Connected.');
+      } catch (error) {
+        setNetworkStatus(error.message);
+      }
+      connecting = false;
+      scheduleMenuHide();
+    }
+
+    // Touch interaction model (for xdotool mousedown/mouseup injection at fixed position):
+    //   Short tap  → show menu (if hidden) | immediately hide menu (if visible)
+    //   Long press (≥2 s) → open WiFi panel directly
+    //
+    // A single pointerdown listener records the gesture start; pointerup acts on it.
+    // A click fallback handles drivers that emit click without prior pointer events.
+
+    let lastInteractionTime = 0;
+    let pointerDownAt = 0;
+    let longPressTimer = null;
+    let menuShownThisGesture = false;
+    let longPressActivated = false;
+
+    function _cancelLongPress() {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+
+    document.addEventListener('pointerdown', (event) => {
+      const t = Date.now();
+      if (t - lastInteractionTime < 150) return;
+      lastInteractionTime = t;
+      pointerDownAt = t;
+      menuShownThisGesture = false;
+      longPressActivated = false;
+
+      if (menuVisible && event.target && event.target.closest && event.target.closest('.menu-panel')) {
+        if (!connecting) scheduleMenuHide();
+        return;
+      }
+
+      event.preventDefault();
+
+      if (!menuVisible) {
+        showMenu();
+        menuShownThisGesture = true;
+      }
+
+      if (!connecting) {
+        longPressTimer = setTimeout(() => {
+          longPressTimer = null;
+          longPressActivated = true;
+          if (!menuVisible) showMenu();
+          openNetworkPanel();
+        }, 2000);
+      }
+    }, { capture: true });
+
+    document.addEventListener('pointerup', (event) => {
+      _cancelLongPress();
+      if (!pointerDownAt) return;
+      pointerDownAt = 0;
+
+      if (event.target && event.target.closest && event.target.closest('.menu-panel')) {
+        return;
+      }
+
+      if (menuVisible && !menuShownThisGesture && !longPressActivated && !connecting) {
+        hideMenu();
+      }
+      menuShownThisGesture = false;
+      longPressActivated = false;
+    }, { capture: true, passive: false });
+
+    // click fallback for drivers that emit click without pointer events
+    document.addEventListener('click', (event) => {
+      const t = Date.now();
+      if (t - lastInteractionTime < 300) return;
+      lastInteractionTime = t;
+
+      if (menuVisible && event.target && event.target.closest && event.target.closest('.menu-panel')) {
+        if (!connecting) scheduleMenuHide();
+        return;
+      }
+      event.preventDefault();
+      if (!menuVisible) {
+        showMenu();
+      } else if (!connecting) {
+        hideMenu();
+      }
+    }, { capture: true });
+
+    document.addEventListener('keydown', () => {
+      _cancelLongPress();
+      if (menuVisible && !connecting) scheduleMenuHide();
+    });
+
+    menuClose.addEventListener('click', hideMenu);
+
+    wifiOption.addEventListener('click', openNetworkPanel);
+
+    networkCancel.addEventListener('click', () => {
+      networkPanel.classList.remove('open');
+      setNetworkStatus('');
+      scheduleMenuHide();
+    });
+
+    networkForm.addEventListener('submit', connectNetwork);
+
     refresh();
-    window.setInterval(() => refresh(), pollMs);
+    pollInterval = window.setInterval(() => refresh(), pollMs);
   </script>
 </body>
 </html>

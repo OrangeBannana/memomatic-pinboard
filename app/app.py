@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import secrets
 import sqlite3
 import time
@@ -12,6 +13,7 @@ from typing import Any
 from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 
@@ -99,6 +101,16 @@ def init_db() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                shown_at REAL
+            )
+            """
+        )
+        conn.execute(
+            """
             INSERT OR IGNORE INTO slideshow_state
                 (id, current_image_id, last_changed_at, push_next_image_id)
             VALUES (1, NULL, 0, NULL)
@@ -110,6 +122,7 @@ def init_db() -> None:
             "backdrop_brightness": "0.68",
             "guest_enabled": "0",
             "guest_token": secrets.token_urlsafe(16),
+            "message_display_seconds": "8",
         }
         for key, value in defaults.items():
             conn.execute(
@@ -141,6 +154,41 @@ def require_owner(x_pinboard_owner_token: str | None) -> None:
         raise HTTPException(status_code=401, detail="Owner token required.")
 
 
+def require_local_request(request: Request) -> None:
+    remote_addr = request.client.host if request.client else ""
+    if remote_addr not in {"127.0.0.1", "::1"}:
+        raise HTTPException(status_code=403, detail="This action is only available on the device screen.")
+
+
+def run_nmcli(args: list[str]) -> subprocess.CompletedProcess[str]:
+    command = ["sudo", "/usr/bin/nmcli", *args]
+    return subprocess.run(command, capture_output=True, text=True)
+
+
+def parse_wifi_scan(output: str) -> list[dict[str, str]]:
+    networks: dict[str, dict[str, str]] = {}
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split(":", 3)
+        if len(parts) != 4:
+            continue
+        active, ssid, signal, security = parts
+        if not ssid:
+            continue
+        existing = networks.get(ssid)
+        score = int(signal or "0")
+        if existing is None or score > int(existing["signal"]):
+            networks[ssid] = {
+                "ssid": ssid,
+                "signal": str(score),
+                "security": security or "--",
+                "active": "1" if active == "*" else "0",
+            }
+    return sorted(networks.values(), key=lambda item: (-int(item["signal"]), item["ssid"].lower()))
+
+
 def get_setting(conn: sqlite3.Connection, key: str, default: str) -> str:
     row = conn.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     return row["value"] if row else default
@@ -170,6 +218,7 @@ def settings_payload(conn: sqlite3.Connection, request: Request) -> dict[str, An
         "guest_token": guest_token,
         "admin_url": admin_url,
         "guest_url": guest_url,
+        "message_display_seconds": int(get_setting(conn, "message_display_seconds", "8")),
     }
 
 
@@ -463,6 +512,36 @@ async def guest_upload(token: str, request: Request, file: UploadFile = File(...
     return {"ok": True, "image": image}
 
 
+@app.post("/api/guest/{token}/message")
+async def guest_message(token: str, request: Request) -> dict[str, Any]:
+    body = await request.json()
+    content = str(body.get("content", "")).strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    if len(content) > 200:
+        raise HTTPException(status_code=400, detail="Message is too long (max 200 characters).")
+    remote_addr = request.client.host if request.client else "unknown"
+    with db() as conn:
+        if not guest_allowed(conn, token):
+            raise HTTPException(status_code=404, detail="Guest link is disabled.")
+        enforce_guest_rate_limit(conn, token, remote_addr)
+        conn.execute(
+            "INSERT INTO messages (content, created_at) VALUES (?, ?)",
+            (content, now()),
+        )
+    return {"ok": True}
+
+
+@app.post("/api/messages/{message_id}/shown")
+def mark_message_shown(message_id: int) -> dict[str, Any]:
+    with db() as conn:
+        conn.execute(
+            "UPDATE messages SET shown_at = ? WHERE id = ? AND shown_at IS NULL",
+            (now(), message_id),
+        )
+    return {"ok": True}
+
+
 @app.get("/api/settings")
 def get_settings(
     request: Request,
@@ -492,6 +571,9 @@ async def update_settings(
             set_setting(conn, "backdrop_brightness", str(value))
         if "guest_enabled" in body:
             set_setting(conn, "guest_enabled", "1" if bool(body["guest_enabled"]) else "0")
+        if "message_display_seconds" in body:
+            value = max(3, min(30, int(body["message_display_seconds"])))
+            set_setting(conn, "message_display_seconds", str(value))
         return {"settings": settings_payload(conn, request)}
 
 
@@ -537,6 +619,11 @@ def slideshow_current() -> dict[str, Any]:
         slide_seconds = int(get_setting(conn, "slide_seconds", str(DEFAULT_SLIDE_SECONDS)))
         backdrop_blur_px = int(get_setting(conn, "backdrop_blur_px", "8"))
         backdrop_brightness = float(get_setting(conn, "backdrop_brightness", "0.68"))
+        message_display_seconds = int(get_setting(conn, "message_display_seconds", "8"))
+        msg_row = conn.execute(
+            "SELECT id, content FROM messages WHERE shown_at IS NULL ORDER BY created_at ASC LIMIT 1"
+        ).fetchone()
+        message = {"id": msg_row["id"], "content": msg_row["content"]} if msg_row else None
         return {
             "image": image,
             "slide_seconds": slide_seconds,
@@ -544,5 +631,102 @@ def slideshow_current() -> dict[str, Any]:
                 "backdrop_blur_px": backdrop_blur_px,
                 "backdrop_brightness": backdrop_brightness,
             },
+            "message": message,
+            "message_display_seconds": message_display_seconds,
             "server_time": now(),
         }
+
+
+@app.post("/api/network/save")
+async def save_network(
+    request: Request,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    body = await request.json()
+    ssid = str(body.get("ssid", "")).strip()
+    password = str(body.get("password", "")).strip()
+    hidden = bool(body.get("hidden", False))
+
+    if not ssid:
+        raise HTTPException(status_code=400, detail="SSID is required.")
+    if len(ssid) > 32:
+        raise HTTPException(status_code=400, detail="SSID is too long.")
+    if password and len(password) < 8:
+        raise HTTPException(status_code=400, detail="Wi-Fi passwords must be at least 8 characters.")
+
+    args = ["connection", "add", "type", "wifi", "con-name", ssid, "ssid", ssid]
+    if hidden:
+        args += ["802-11-wireless.hidden", "yes"]
+    if password:
+        args += ["wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", password]
+
+    result = await run_in_threadpool(run_nmcli, args)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "Unable to save the network.").strip()
+        raise HTTPException(status_code=400, detail=detail)
+
+    return {"ok": True, "message": f"Network '{ssid}' saved. The Pi will connect automatically when in range."}
+
+
+@app.get("/api/network/wifi")
+def wifi_scan(x_pinboard_owner_token: str | None = Header(default=None)) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    result = run_nmcli(["-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "dev", "wifi", "list", "--rescan", "yes"])
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "Unable to scan Wi-Fi networks.").strip()
+        raise HTTPException(status_code=400, detail=detail)
+    return {"networks": parse_wifi_scan(result.stdout)}
+
+
+@app.post("/api/network/connect")
+async def connect_network(
+    request: Request,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    # Allow either a valid owner token or a request from the device itself (kiosk/frame).
+    remote_addr = request.client.host if request.client else ""
+    is_local = remote_addr in {"127.0.0.1", "::1"}
+    if not is_local:
+        require_owner(x_pinboard_owner_token)
+
+    body = await request.json()
+    ssid = str(body.get("ssid", "")).strip()
+    password = str(body.get("password", "")).strip()
+    hidden = bool(body.get("hidden", False))
+
+    if not ssid:
+        raise HTTPException(status_code=400, detail="SSID is required.")
+    if len(ssid) > 32:
+        raise HTTPException(status_code=400, detail="SSID is too long.")
+    if password and len(password) < 8:
+        raise HTTPException(status_code=400, detail="Wi-Fi passwords must be at least 8 characters.")
+
+    args = ["dev", "wifi", "connect", ssid]
+    if hidden:
+        args += ["hidden", "yes"]
+    if password:
+        args += ["password", password]
+
+    result = await run_in_threadpool(run_nmcli, args)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "Unable to add the network.").strip()
+        raise HTTPException(status_code=400, detail=detail)
+
+    message = result.stdout.strip() or f"Connected to {ssid}."
+    return {"ok": True, "message": message}
+
+
+@app.get("/api/network/ip")
+async def get_device_ip() -> dict[str, Any]:
+    """Returns the device's primary outbound IP. No auth — visible on LAN anyway."""
+    import socket as _socket
+    ip = "unknown"
+    try:
+        s = _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+    return {"ip": ip}

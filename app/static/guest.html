@@ -36,13 +36,48 @@
     }
 
     h1 {
-      margin: 0 0 8px;
+      margin: 0 0 16px;
       font-size: 26px;
       letter-spacing: 0;
     }
 
+    .tabs {
+      display: flex;
+      gap: 0;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+      margin-bottom: 18px;
+    }
+
+    .tab {
+      flex: 1;
+      appearance: none;
+      border: none;
+      border-radius: 0;
+      padding: 10px 12px;
+      background: #fff;
+      color: var(--muted);
+      font: inherit;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .tab:not(:last-child) {
+      border-right: 1px solid var(--line);
+    }
+
+    .tab.active {
+      background: var(--accent);
+      color: #fff;
+      font-weight: 650;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
     p {
-      margin: 0 0 16px;
+      margin: 0 0 14px;
       color: var(--muted);
       line-height: 1.4;
     }
@@ -61,6 +96,26 @@
       font: inherit;
     }
 
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px;
+      background: #fff;
+      font: inherit;
+      resize: vertical;
+      min-height: 96px;
+    }
+
+    .char-count {
+      text-align: right;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: -6px;
+    }
+
+    .char-count.over { color: #c0392b; }
+
     button {
       appearance: none;
       border: 1px solid transparent;
@@ -75,7 +130,7 @@
 
     button:disabled { opacity: 0.52; cursor: wait; }
 
-    #status {
+    #photo-status, #msg-status {
       min-height: 22px;
       margin-top: 12px;
       color: var(--muted);
@@ -85,48 +140,110 @@
 <body>
   <main>
     <h1>Send to Memomatic</h1>
-    <p>Your image will be added to the pinboard and shown next if guest uploads are enabled.</p>
-    <form id="guest-form">
-      <input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp" required>
-      <button id="upload-button" type="submit">Send Image</button>
-    </form>
-    <div id="status"></div>
+    <div class="tabs">
+      <button class="tab active" data-tab="photo" type="button">Photo</button>
+      <button class="tab" data-tab="message" type="button">Message</button>
+    </div>
+
+    <div id="tab-photo" class="tab-panel active">
+      <p>Your image will be added to the pinboard and shown next.</p>
+      <form id="photo-form">
+        <input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp" required>
+        <button id="upload-button" type="submit">Send Photo</button>
+      </form>
+      <div id="photo-status"></div>
+    </div>
+
+    <div id="tab-message" class="tab-panel">
+      <p>Your message will appear on screen for a few seconds.</p>
+      <form id="msg-form">
+        <textarea id="msg-text" placeholder="Type your message…" maxlength="200" required></textarea>
+        <div class="char-count"><span id="char-count">0</span> / 200</div>
+        <button id="msg-button" type="submit">Send Message</button>
+      </form>
+      <div id="msg-status"></div>
+    </div>
   </main>
 
   <script>
     const token = "__GUEST_TOKEN__";
-    const form = document.getElementById('guest-form');
+
+    // Tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+      });
+    });
+
+    // Photo upload
+    const photoForm = document.getElementById('photo-form');
     const fileInput = document.getElementById('file');
     const uploadButton = document.getElementById('upload-button');
-    const statusEl = document.getElementById('status');
+    const photoStatus = document.getElementById('photo-status');
 
-    function setStatus(message) {
-      statusEl.textContent = message || '';
-    }
-
-    form.addEventListener('submit', async (event) => {
+    photoForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!fileInput.files.length) return;
       uploadButton.disabled = true;
-      setStatus('Sending...');
+      photoStatus.textContent = 'Sending...';
       try {
         const body = new FormData();
         body.append('file', fileInput.files[0]);
         const response = await fetch(`/api/guest/${token}/images`, { method: 'POST', body });
         if (!response.ok) {
           let detail = response.statusText;
-          try {
-            const data = await response.json();
-            detail = data.detail || detail;
-          } catch (_) {}
+          try { const d = await response.json(); detail = d.detail || detail; } catch (_) {}
           throw new Error(detail);
         }
         fileInput.value = '';
-        setStatus('Sent. Watch the frame.');
+        photoStatus.textContent = 'Sent. Watch the frame.';
       } catch (error) {
-        setStatus(error.message);
+        photoStatus.textContent = error.message;
       } finally {
         uploadButton.disabled = false;
+      }
+    });
+
+    // Message
+    const msgForm = document.getElementById('msg-form');
+    const msgText = document.getElementById('msg-text');
+    const msgButton = document.getElementById('msg-button');
+    const msgStatus = document.getElementById('msg-status');
+    const charCount = document.getElementById('char-count');
+
+    msgText.addEventListener('input', () => {
+      const n = msgText.value.length;
+      charCount.textContent = n;
+      charCount.parentElement.classList.toggle('over', n > 200);
+    });
+
+    msgForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const content = msgText.value.trim();
+      if (!content) return;
+      msgButton.disabled = true;
+      msgStatus.textContent = 'Sending...';
+      try {
+        const response = await fetch(`/api/guest/${token}/message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content }),
+        });
+        if (!response.ok) {
+          let detail = response.statusText;
+          try { const d = await response.json(); detail = d.detail || detail; } catch (_) {}
+          throw new Error(detail);
+        }
+        msgText.value = '';
+        charCount.textContent = '0';
+        msgStatus.textContent = 'Sent. Watch the frame.';
+      } catch (error) {
+        msgStatus.textContent = error.message;
+      } finally {
+        msgButton.disabled = false;
       }
     });
   </script>

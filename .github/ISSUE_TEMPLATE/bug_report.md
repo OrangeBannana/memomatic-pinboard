@@ -2,13 +2,16 @@
 name: Bug report
 about: Create a report to help us improve
 title: ''
-labels: ''
+labels: 'status: needs-triage, type: bug'
 assignees: ''
 
 ---
 
 **Describe the bug**
 A clear and concise description of what the bug is.
+
+**Repository scope**
+Confirm this issue belongs in `OrangeBannana/memomatic-pinboard`.
 
 **To Reproduce**
 Steps to reproduce the behavior:
@@ -19,6 +22,9 @@ Steps to reproduce the behavior:
 
 **Expected behavior**
 A clear and concise description of what you expected to happen.
+
+**Scope guard**
+List any follow-up work that should be split into a separate issue instead of expanding this bug.
 
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
@@ -36,3 +42,6 @@ If applicable, add screenshots to help explain your problem.
 
 **Additional context**
 Add any other context about the problem here.
+
+**Suggested labels**
+If known, add area or maintainer labels such as `area: ui`, `area: deploy`, `maintainer: ai`, or `maintainer: human`.

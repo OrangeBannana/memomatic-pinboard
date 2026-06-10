@@ -53,3 +53,4 @@ Enter the owner token to unlock. From there you can upload images, manage the im
 
 - [Pinboard app notes](docs/pinboard-app.md)
 - [TFT hardware setup](docs/hardware-tft-setup.md)
+- [Maintainer standards](docs/maintainer-standards.md)

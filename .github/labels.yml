@@ -1,0 +1,60 @@
+- name: "type: bug"
+  color: "d73a4a"
+  description: Broken behavior that should be fixed.
+- name: "type: feature"
+  color: "a2eeef"
+  description: Requested capability or enhancement.
+- name: "type: task"
+  color: "cfd3d7"
+  description: Focused maintainer task or follow-up item.
+- name: "type: docs"
+  color: "0075ca"
+  description: Documentation-only work.
+- name: "type: maintenance"
+  color: "7057ff"
+  description: Repository upkeep, tooling, or housekeeping work.
+- name: "area: app"
+  color: "1d76db"
+  description: FastAPI backend or server-side slideshow logic.
+- name: "area: ui"
+  color: "0e8a16"
+  description: Admin, guest, or frame static UI work.
+- name: "area: deploy"
+  color: "5319e7"
+  description: Install, deploy, service, or runtime environment changes.
+- name: "area: docs"
+  color: "006b75"
+  description: README, docs, or maintainer guidance changes.
+- name: "area: hardware"
+  color: "fbca04"
+  description: TFT, touch, kiosk, or Raspberry Pi hardware-related work.
+- name: "maintainer: human"
+  color: "f9d0c4"
+  description: Best owned by a human maintainer.
+- name: "maintainer: ai"
+  color: "bfdadc"
+  description: Suitable for an AI maintainer session.
+- name: "maintainer: paired"
+  color: "c2e0c6"
+  description: Best handled collaboratively between human and AI maintainers.
+- name: "status: needs-triage"
+  color: "ededed"
+  description: Newly opened and awaiting initial triage.
+- name: "status: ready"
+  color: "0e8a16"
+  description: Well scoped and ready to pick up.
+- name: "status: in-progress"
+  color: "fbca04"
+  description: Actively being worked on.
+- name: "status: blocked"
+  color: "b60205"
+  description: Cannot proceed until an external dependency is resolved.
+- name: "status: needs-review"
+  color: "5319e7"
+  description: Waiting for review or confirmation.
+- name: "status: needs-handoff"
+  color: "d4c5f9"
+  description: Work paused with notes for the next session.
+- name: "status: done"
+  color: "0e8a16"
+  description: Completed and no further work is expected.

@@ -116,8 +116,9 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 12px;
+      padding: 6px 10px 6px 12px;
       border-bottom: 1px solid rgba(255,255,255,0.08);
+      min-height: 48px;
     }
 
     .menu-title {
@@ -139,20 +140,21 @@
       background: rgba(255,255,255,0.08);
       color: #fff;
       font: inherit;
-      width: 28px;
-      height: 28px;
+      /* 44×44 minimum touch target for resistive touchscreen */
+      width: 44px;
+      height: 44px;
       padding: 0;
       display: grid;
       place-items: center;
       cursor: pointer;
       touch-action: manipulation;
-      font-size: 14px;
+      font-size: 16px;
     }
 
     .menu-body {
       padding: 8px 10px;
       display: grid;
-      gap: 7px;
+      gap: 8px;
     }
 
     .menu-button,
@@ -163,9 +165,11 @@
       background: rgba(255,255,255,0.08);
       color: #fff;
       font: inherit;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: 600;
-      padding: 7px 14px;
+      /* 48px minimum touch target for resistive touchscreen */
+      min-height: 48px;
+      padding: 11px 16px;
       cursor: pointer;
       touch-action: manipulation;
     }
@@ -184,11 +188,13 @@
       box-sizing: border-box;
       border: 1px solid rgba(255,255,255,0.14);
       border-radius: 8px;
-      padding: 7px 10px;
+      /* 44px min touch height for resistive touchscreen */
+      min-height: 44px;
+      padding: 10px 12px;
       background: rgba(255,255,255,0.08);
       color: #fff;
       font: inherit;
-      font-size: 13px;
+      font-size: 14px;
       caret-color: #fff;
     }
     .network-panel input:focus { outline: none; border-color: rgba(255,255,255,0.4); }
@@ -196,20 +202,21 @@
     .network-row {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       color: rgba(255,255,255,0.75);
-      font-size: 12px;
+      font-size: 13px;
     }
 
     .network-actions {
       display: flex;
       gap: 8px;
     }
+    .network-actions > * { flex: 1; }
 
     .network-status {
-      min-height: 16px;
+      min-height: 18px;
       color: rgba(255,255,255,0.75);
-      font-size: 12px;
+      font-size: 13px;
       line-height: 1.3;
     }
 
@@ -258,7 +265,8 @@
 
     .kbd-key {
       flex: 1;
-      height: 30px;
+      /* 36px: practical minimum given full keyboard width on 480px screen */
+      height: 36px;
       border: none;
       border-radius: 5px;
       background: rgba(255,255,255,0.18);
@@ -271,8 +279,8 @@
       padding: 0;
     }
     .kbd-key:active { background: rgba(255,255,255,0.38); }
-    .kbd-fn   { flex: 0 0 46px; background: rgba(255,255,255,0.09); font-size: 11px; }
-    .kbd-wide { flex: 0 0 42px; background: rgba(255,255,255,0.09); font-size: 11px; }
+    .kbd-fn   { flex: 0 0 48px; background: rgba(255,255,255,0.09); font-size: 11px; }
+    .kbd-wide { flex: 0 0 44px; background: rgba(255,255,255,0.09); font-size: 11px; }
     .kbd-space { flex: 4; background: rgba(255,255,255,0.14); font-size: 11px; }
   </style>
 </head>

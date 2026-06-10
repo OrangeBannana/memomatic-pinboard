@@ -26,9 +26,12 @@ FILES = [
     ("app/touch_bridge.py",           f"{PI_HOME}/app/touch_bridge.py"),
     ("app/touch_test.py",             f"{PI_HOME}/app/touch_test.py"),
     ("app/raw_touch.py",              f"{PI_HOME}/app/raw_touch.py"),
+    ("app/show_splash.py",            f"{PI_HOME}/app/show_splash.py"),
+    ("app/boot_splash.png",           f"{PI_HOME}/app/boot_splash.png"),
     ("systemd/pinboard-app.service",  "/tmp/pinboard-app.service"),
     ("systemd/pinboard-kiosk.service","/tmp/pinboard-kiosk.service"),
     ("systemd/pinboard-touch.service","/tmp/pinboard-touch.service"),
+    ("systemd/pinboard-splash.service","/tmp/pinboard-splash.service"),
     ("install.sh",                    "/tmp/memomatic-install.sh"),
 ]
 

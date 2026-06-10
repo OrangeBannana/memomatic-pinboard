@@ -211,3 +211,9 @@ When adding new UI elements, always use a token from the table above — never h
 - Fullscreen card layout, centred vertically; optimised for one-handed use.
 - Tabs use pill/segment style at the top of the card.
 - A single large submit button per tab; no secondary actions.
+
+### Boot splash (`app/boot_splash.png`)
+- Canvas size: **480 × 320 px** (matches TFT logical resolution; `show_splash.py` scales to actual framebuffer if different).
+- Background: `#0b0b0e` — same as `--bg`, keeps visual continuity with `frame.html`.
+- Layout (top→bottom): faint accent radial glow at top → short accent pill → "Memomatic" title (large bold) → "Pinboard" subtitle → "Starting up…" hint text at bottom.
+- Regenerate with `python3 app/gen_boot_splash.py` whenever the brand colours change.

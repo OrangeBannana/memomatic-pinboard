@@ -25,6 +25,7 @@ FILES = [
     ("app/spi_touch_read.c",          f"{PI_HOME}/app/spi_touch_read.c"),
     ("app/touch_bridge.py",           f"{PI_HOME}/app/touch_bridge.py"),
     ("app/touch_test.py",             f"{PI_HOME}/app/touch_test.py"),
+    ("app/raw_touch.py",              f"{PI_HOME}/app/raw_touch.py"),
     ("systemd/pinboard-app.service",  "/tmp/pinboard-app.service"),
     ("systemd/pinboard-kiosk.service","/tmp/pinboard-kiosk.service"),
     ("systemd/pinboard-touch.service","/tmp/pinboard-touch.service"),

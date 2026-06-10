@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "memomatic",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "app:app", "--port", "8090", "--app-dir", "app"],
+      "port": 8090,
+      "env": {
+        "PINBOARD_HOME": "${env:TEMP}/pinboard-preview",
+        "PINBOARD_OWNER_TOKEN": "dev"
+      }
+    }
+  ]
+}

@@ -14,13 +14,53 @@ The entire backend is [app/app.py](app/app.py). The three UIs are static HTML se
 
 ## Running and developing
 
-There is no test suite, linter config, or package manager manifest beyond `requirements.txt`. To run locally:
+There is no test suite, linter config, or package manager manifest beyond `requirements.txt`.
+
+### Local dev (Linux / WSL2 / macOS) — recommended
 
 ```bash
-pip install -r requirements.txt   # fastapi, uvicorn[standard], python-multipart, qrcode (Pillow also required)
+pip install -r requirements.txt   # fastapi, uvicorn[standard], python-multipart, qrcode, Pillow
+
+./run-local.sh   # starts on http://127.0.0.1:8080  (owner token: dev)
+```
+
+`run-local.sh` prepends `local/bin` to `PATH` so that the `sudo /usr/bin/nmcli` calls in `app.py` hit stub scripts that return canned Wi-Fi data instead of failing. Wi-Fi scan, connect, and save endpoints all work normally during local testing.
+
+### Local dev (Windows — via WSL2)
+
+```bat
+run-local.bat
+```
+
+Double-click or run from a Command Prompt / PowerShell. Requires WSL2 with a Linux distro that has Python 3. Launches `run-local.sh` inside WSL automatically.
+
+### Manual startup (without the helper script)
+
+```bash
+# Create required data dirs first (app.py mounts them at import time)
+mkdir -p /tmp/pinboard/data /tmp/pinboard/images/originals /tmp/pinboard/images/display
+
 PINBOARD_HOME=/tmp/pinboard PINBOARD_OWNER_TOKEN=dev \
   python3 -m uvicorn app:app --reload --port 8080 --app-dir app
 ```
+
+Wi-Fi API endpoints (`/api/network/wifi`, `/api/network/connect`, `/api/network/save`) will fail without the stubs — add `local/bin` to the front of `PATH` to enable them.
+
+### nmcli stubs
+
+`local/bin/nmcli` and `local/bin/sudo` are lightweight shell scripts that intercept the `sudo /usr/bin/nmcli` calls made by `run_nmcli()` in `app.py`. They return canned responses:
+
+| nmcli call | stub behaviour |
+|---|---|
+| `dev wifi list` | returns 4 fake networks (HomeNetwork, OfficeWifi, CafeGuest, NeighbourNet) |
+| `dev wifi connect` | returns success message |
+| `connection add` | returns success message |
+
+These files must stay executable (`chmod +x local/bin/nmcli local/bin/sudo`).
+
+### Validation
+
+Before deploying, run: `python3 -m compileall app deploy.py`
 
 Then open `http://127.0.0.1:8080/admin` and unlock with the token. The DB, image dirs, and default settings are created automatically on first request (`init_db` runs on FastAPI startup). On the Pi, install with `sudo PINBOARD_OWNER_TOKEN='...' ./install.sh`, which installs apt-packaged deps, lays out `/home/memomatic/pinboard`, and enables the `pinboard-app` and `pinboard-kiosk` systemd units.
 

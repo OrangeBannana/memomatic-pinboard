@@ -24,7 +24,9 @@ apt install -y \
   python3-qrcode \
   xserver-xorg-video-fbdev \
   chromium-browser \
-  xdotool
+  xdotool \
+  avahi-daemon \
+  libnss-mdns
 
 install -d -o "$APP_USER" -g "$APP_USER" "$PINBOARD_HOME/app"
 install -d -o "$APP_USER" -g "$APP_USER" "$PINBOARD_HOME/app/static"
@@ -77,7 +79,11 @@ Section "InputClass"
 EndSection
 EOF
 
+hostnamectl set-hostname memomatic
+
 systemctl daemon-reload
+systemctl enable avahi-daemon.service
+systemctl restart avahi-daemon.service
 systemctl enable pinboard-app.service
 systemctl enable pinboard-kiosk.service
 systemctl enable pinboard-touch.service
@@ -86,5 +92,6 @@ systemctl restart pinboard-kiosk.service
 systemctl restart pinboard-touch.service
 
 echo "Memomatic Pinboard installed."
-echo "Admin: http://<pi-ip>:8080/admin"
+echo "Admin: http://memomatic.local:8080/admin"
+echo "       http://<pi-ip>:8080/admin  (IP fallback)"
 echo "Owner token: $OWNER_TOKEN"

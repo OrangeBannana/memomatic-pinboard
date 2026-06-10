@@ -873,4 +873,9 @@ async def get_device_ip() -> dict[str, Any]:
         s.close()
     except Exception:
         pass
-    return {"ip": ip}
+    hostname = "unknown"
+    try:
+        hostname = socket.gethostname()
+    except Exception:
+        pass
+    return {"ip": ip, "hostname": hostname, "mdns": f"{hostname}.local" if hostname != "unknown" else "unknown"}

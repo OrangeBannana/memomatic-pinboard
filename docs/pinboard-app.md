@@ -78,6 +78,21 @@ GET    /api/qr.svg
 GET    /api/slideshow/current
 ```
 
+## Network Access
+
+After install, the Pi is accessible on the local network at:
+
+```
+http://memomatic.local:8080/admin   (mDNS — works on all modern OS)
+http://<pi-ip>:8080/admin           (IP fallback)
+```
+
+`install.sh` sets the hostname to `memomatic` and starts `avahi-daemon`, which advertises `memomatic.local` via mDNS/Zeroconf. Windows 10+, macOS, and Linux with `avahi-daemon` installed resolve `.local` hostnames automatically. Android and older Windows may need the IP address instead.
+
+The frame's on-screen menu shows `memomatic.local:8080` and the raw IP. The admin console shows both addresses below the QR codes.
+
+---
+
 ## Troubleshooting
 
 Check services:

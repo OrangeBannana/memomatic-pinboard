@@ -196,6 +196,14 @@
   </main>
 
   <script>
+    (async () => {
+      try {
+        const d = await fetch('/api/color-schemes').then(r => r.json());
+        const active = (d.schemes||[]).find(s => s.name === d.active_name) || (d.schemes||[])[0];
+        if (active?.tokens) for (const [p,v] of Object.entries(active.tokens)) document.documentElement.style.setProperty(p,v);
+      } catch(_) {}
+    })();
+
     const token = "__GUEST_TOKEN__";
 
     // Tabs

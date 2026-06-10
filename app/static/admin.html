@@ -331,6 +331,39 @@
 
     /* ── Meta text ── */
     .meta { font-size: 13px; color: var(--text-subtle); }
+
+    /* ── Colour scheme editor ── */
+    input[type="color"] {
+      width: 100%;
+      min-height: 48px;
+      border: 1px solid rgba(255,255,255,0.11);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.06);
+      padding: 4px 6px;
+      cursor: pointer;
+    }
+    input[type="color"]:focus { outline: none; border-color: var(--accent); }
+
+    .scheme-preview {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid var(--glass-border);
+      flex-wrap: wrap;
+      min-height: 48px;
+      transition: background 200ms;
+    }
+    .scheme-swatch {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -448,6 +481,47 @@
 
       <section class="panel">
         <div class="panel-header">
+          <h2>Appearance</h2>
+        </div>
+
+        <div class="form-row" style="margin-bottom: 14px;">
+          <select id="scheme-select"></select>
+          <button id="activate-scheme" type="button">Activate</button>
+        </div>
+
+        <hr>
+        <p class="muted" style="margin-bottom: 14px;">Adjust the four key colours below. Built-in schemes cannot be overwritten — give it a new name to save as custom.</p>
+
+        <div class="settings-grid">
+          <label class="field">
+            <span>Accent</span>
+            <input id="scheme-accent" type="color" value="#7c6af5">
+          </label>
+          <label class="field">
+            <span>Background</span>
+            <input id="scheme-bg" type="color" value="#0b0b0e">
+          </label>
+          <label class="field">
+            <span>Text</span>
+            <input id="scheme-text" type="color" value="#ede9e1">
+          </label>
+          <label class="field">
+            <span>Danger</span>
+            <input id="scheme-danger" type="color" value="#e85454">
+          </label>
+        </div>
+
+        <div id="scheme-preview" class="scheme-preview" style="margin-top: 14px;"></div>
+
+        <div class="form-row" style="margin-top: 14px;">
+          <input id="scheme-name" type="text" placeholder="Custom scheme name">
+          <button id="save-scheme" type="button">Save scheme</button>
+          <button id="delete-scheme" class="danger" type="button">Delete</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
           <h2>Images</h2>
           <span id="image-count" class="meta"></span>
         </div>
@@ -458,6 +532,14 @@
   </main>
 
   <script>
+    (async () => {
+      try {
+        const d = await fetch('/api/color-schemes').then(r => r.json());
+        const active = (d.schemes||[]).find(s => s.name === d.active_name) || (d.schemes||[])[0];
+        if (active?.tokens) for (const [p,v] of Object.entries(active.tokens)) document.documentElement.style.setProperty(p,v);
+      } catch(_) {}
+    })();
+
     const loginPanel = document.getElementById('login-panel');
     const adminPanels = document.getElementById('admin-panels');
     const loginForm = document.getElementById('login-form');
@@ -538,6 +620,140 @@
     function setNetworkStatus(message) {
       networkStatus.textContent = message || '';
     }
+
+    // ── Colour schemes ──────────────────────────────────────────────
+    const schemeSelect = document.getElementById('scheme-select');
+    const schemeName = document.getElementById('scheme-name');
+    const schemeAccent = document.getElementById('scheme-accent');
+    const schemeBg = document.getElementById('scheme-bg');
+    const schemeText = document.getElementById('scheme-text');
+    const schemeDanger = document.getElementById('scheme-danger');
+    const schemePreview = document.getElementById('scheme-preview');
+    const activateSchemeBtn = document.getElementById('activate-scheme');
+    const saveSchemeBtn = document.getElementById('save-scheme');
+    const deleteSchemeBtn = document.getElementById('delete-scheme');
+
+    let allSchemes = [];
+
+    function hexToRgb(hex) {
+      const h = hex.replace('#', '');
+      return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+    }
+
+    function deriveTokens(accent, bg, text, danger) {
+      const [ar,ag,ab] = hexToRgb(accent);
+      const [br,bgG,bb] = hexToRgb(bg);
+      const [tr,tg,tb] = hexToRgb(text);
+      const [dr,dg,db] = hexToRgb(danger);
+      return {
+        '--accent':       accent,
+        '--accent-dim':   `rgba(${ar},${ag},${ab},0.16)`,
+        '--bg':           bg,
+        '--glass-bg':     `rgba(${Math.min(255,br+10)},${Math.min(255,bgG+10)},${Math.min(255,bb+10)},0.82)`,
+        '--glass-border': 'rgba(255,255,255,0.10)',
+        '--text':         text,
+        '--text-muted':   `rgba(${tr},${tg},${tb},0.58)`,
+        '--text-subtle':  `rgba(${tr},${tg},${tb},0.30)`,
+        '--line':         'rgba(255,255,255,0.08)',
+        '--danger':       danger,
+        '--danger-dim':   `rgba(${dr},${dg},${db},0.14)`,
+        '--success':      '#52c47a',
+      };
+    }
+
+    function applyTokens(tokens) {
+      for (const [p, v] of Object.entries(tokens)) {
+        document.documentElement.style.setProperty(p, v);
+      }
+    }
+
+    function updateSchemePreview() {
+      const tokens = deriveTokens(schemeAccent.value, schemeBg.value, schemeText.value, schemeDanger.value);
+      schemePreview.style.background = tokens['--bg'];
+      schemePreview.innerHTML = `
+        <span class="scheme-swatch" style="background:${tokens['--accent']};color:#fff;">Accent</span>
+        <span class="scheme-swatch" style="background:${tokens['--glass-bg']};color:${tokens['--text']};border:1px solid ${tokens['--glass-border']};">Panel</span>
+        <span class="scheme-swatch" style="color:${tokens['--text']};">${tokens['--text']}</span>
+        <span class="scheme-swatch" style="color:${tokens['--danger']};">${tokens['--danger']}</span>
+      `;
+      return tokens;
+    }
+
+    function loadSchemeIntoEditor(scheme) {
+      const t = scheme.tokens || {};
+      schemeName.value = scheme.name;
+      schemeAccent.value = t['--accent'] || '#7c6af5';
+      schemeBg.value = t['--bg'] || '#0b0b0e';
+      schemeText.value = t['--text'] || '#ede9e1';
+      schemeDanger.value = t['--danger'] || '#e85454';
+      deleteSchemeBtn.disabled = !!scheme.builtin;
+      updateSchemePreview();
+    }
+
+    async function loadColorSchemes() {
+      try {
+        const data = await fetch('/api/color-schemes').then(r => r.json());
+        allSchemes = data.schemes || [];
+        const activeName = data.active_name || 'Dark Violet';
+        schemeSelect.innerHTML = '';
+        for (const s of allSchemes) {
+          const opt = document.createElement('option');
+          opt.value = s.name;
+          opt.textContent = s.name + (s.builtin ? '' : ' ❆');
+          schemeSelect.appendChild(opt);
+        }
+        schemeSelect.value = activeName;
+        const active = allSchemes.find(s => s.name === activeName) || allSchemes[0];
+        if (active) loadSchemeIntoEditor(active);
+      } catch (e) {
+        console.error('Failed to load colour schemes', e);
+      }
+    }
+
+    schemeSelect.addEventListener('change', () => {
+      const s = allSchemes.find(x => x.name === schemeSelect.value);
+      if (s) loadSchemeIntoEditor(s);
+    });
+
+    [schemeAccent, schemeBg, schemeText, schemeDanger].forEach(inp =>
+      inp.addEventListener('input', updateSchemePreview)
+    );
+
+    activateSchemeBtn.addEventListener('click', async () => {
+      const name = schemeSelect.value;
+      try {
+        const res = await api(`/api/color-schemes/${encodeURIComponent(name)}/activate`, { method: 'POST' });
+        applyTokens(res.scheme.tokens);
+        setStatus(`Scheme "${name}" activated.`);
+      } catch (e) { setStatus(e.message); }
+    });
+
+    saveSchemeBtn.addEventListener('click', async () => {
+      const name = schemeName.value.trim();
+      if (!name) { setStatus('Enter a scheme name first.'); return; }
+      const tokens = deriveTokens(schemeAccent.value, schemeBg.value, schemeText.value, schemeDanger.value);
+      try {
+        await api('/api/color-schemes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, tokens }),
+        });
+        await api(`/api/color-schemes/${encodeURIComponent(name)}/activate`, { method: 'POST' });
+        applyTokens(tokens);
+        setStatus(`Scheme "${name}" saved and activated.`);
+        await loadColorSchemes();
+        schemeSelect.value = name;
+      } catch (e) { setStatus(e.message); }
+    });
+
+    deleteSchemeBtn.addEventListener('click', async () => {
+      const name = schemeSelect.value;
+      try {
+        await api(`/api/color-schemes/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        setStatus(`Scheme "${name}" deleted.`);
+        await loadColorSchemes();
+      } catch (e) { setStatus(e.message); }
+    });
 
     async function loadWifiNetworks() {
       setNetworkStatus('Scanning Wi-Fi networks...');
@@ -628,6 +844,7 @@
       await loadSettings();
       await loadImages();
       await loadWifiNetworks();
+      await loadColorSchemes();
       showAdmin(true);
     }
 

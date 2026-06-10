@@ -105,12 +105,13 @@ The TFT uses an ADS7846 resistive touchscreen controller on SPI0.1 (CS=1, GPIO17
 
 **Coordinate reading** (`app/spi_touch_read.c`): C program that maps `/dev/mem` SPI0 registers, busy-waits for fbcp's DMA to finish a frame (SPI TA: 1→0 transition), then reads 4 averaged ADS7846 samples in the ~2 ms inter-frame gap. Python cannot catch this window reliably due to GIL overhead; compiled C busy-wait can. Falls back to `"err"` if the read fails; `touch_bridge.py` falls back to position (240, 100) in that case.
 
-**Calibration** (from `/etc/X11/xorg.conf.d/99-calibration.conf`):
-- `Calibration "3936 227 268 3880"` + `SwapAxes "1"`
-- Physical Y channel (ADS7846 cmd 0x90) → screen X: `(raw - 268) / (3880 - 268) * 480`
-- Physical X channel (ADS7846 cmd 0xD0) → screen Y: `(raw - 3936) / (227 - 3936) * 320`
+**Calibration** (measured empirically via `app/raw_touch.py` 4-corner test on this device):
+- `Calibration "1839 263 212 1857"` + `SwapAxes "1"` (in `/etc/X11/xorg.conf.d/99-calibration.conf`)
+- Physical Y channel (ADS7846 cmd 0x90) → screen X: `(raw - 212) / (1857 - 212) * 480`
+- Physical X channel (ADS7846 cmd 0xD0) → screen Y: `(raw - 1839) / (263 - 1839) * 320`
 - X11 display is 480×320 (confirmed: xdotool screen centre = 240,160)
-- If touch position is consistently off, adjust the four constants in `spi_touch_read.c` and redeploy
+- Corner ADC values: TL ry=220 rx=1872 / TR ry=1841 rx=1806 / BR ry=1872 rx=260 / BL ry=203 rx=266
+- If touch position is consistently off, re-run `sudo python3 app/raw_touch.py`, touch 4 corners, and update the four CAL_* constants in `spi_touch_read.c` and redeploy
 
 **Frame menu interaction model** (`frame.html`):
 - **Short tap anywhere** → show menu (if hidden) | immediately close menu (if visible)
@@ -152,3 +153,4 @@ Bugs found and fixed across development sessions:
 5. **Menu auto-hide during WiFi connect** — the 3.5 s timer dismissed the menu before nmcli responded. Fixed with the `connecting` flag.
 6. **Stale poll interval** — `setInterval` captured the initial `pollMs` and never updated. Fixed by storing the handle and recreating it when `pollMs` changes.
 7. **Systemd ordering cycle** — `After=pinboard-kiosk.service` in touch service created a dependency cycle. Fixed by removing the kiosk dependency.
+8. **spi_touch_read always returned "err" (all-zero ADC reads)** — root cause: when `pinboard-touch.service` unbinds the `ads7846` kernel driver, GPIO7 (SPI0_CE1_N / CS1) reverts from ALT0 to input mode. The SPI peripheral believes it is asserting CS1, but the physical pin stays HIGH → ADS7846 is never selected → MISO reads back 0x00. Fixed by mapping the GPIO peripheral in `spi_touch_read.c` and calling `gpio7_alt0()` to restore GPIO7 to ALT0 before every read. Also: all `fprintf`/stderr calls in `spi_touch_read.c` must come AFTER `wrs(SPI_CS, 0)` — a `write(2)` syscall in the inter-frame hot path introduces enough latency that fbcp starts the next frame before the ADS7846 read completes.

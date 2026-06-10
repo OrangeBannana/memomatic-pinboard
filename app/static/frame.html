@@ -33,9 +33,7 @@
       transition: opacity 650ms ease;
     }
 
-    .slide.visible {
-      opacity: 1;
-    }
+    .slide.visible { opacity: 1; }
 
     .slide .backdrop {
       position: absolute;
@@ -43,14 +41,13 @@
       background-position: center;
       background-size: cover;
       filter: blur(var(--backdrop-blur, 8px)) saturate(1.03) brightness(var(--backdrop-brightness, 0.68));
-      transform: none;
     }
 
     .slide .backdrop::after {
       content: "";
       position: absolute;
       inset: 0;
-      background: rgba(0, 0, 0, 0.12);
+      background: rgba(0,0,0,0.12);
     }
 
     .slide img {
@@ -70,58 +67,46 @@
       display: none;
       place-items: center;
       text-align: center;
-      line-height: 1.35;
       color: #f8f5e9;
       pointer-events: none;
     }
+    #empty.visible { display: grid; }
+    #empty h1 { margin: 0 0 6px; font-size: 20px; font-weight: 700; }
+    #empty p  { margin: 0; font-size: 13px; color: #cfc9b8; }
 
-    #empty.visible {
-      display: grid;
-    }
-
-    #empty .empty-inner {
-      width: min(84vw, 320px);
-    }
-
-    #empty h1 {
-      margin: 0 0 10px;
-      font-size: 24px;
-      font-weight: 700;
-      letter-spacing: 0;
-    }
-
-    #empty p {
-      margin: 0;
-      font-size: 15px;
-      color: #cfc9b8;
-    }
-
+    /* ── Menu overlay ── */
     .menu-overlay {
       position: fixed;
       inset: 0;
       z-index: 3;
-      display: grid;
-      place-items: end center;
-      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 8px;
       opacity: 0;
       pointer-events: none;
-      transition: opacity 220ms ease;
-      background: linear-gradient(to top, rgba(0, 0, 0, 0.38), rgba(0, 0, 0, 0.02) 55%);
+      transition: opacity 200ms ease;
+      background: linear-gradient(to top, rgba(0,0,0,0.4), rgba(0,0,0,0.02) 60%);
       backdrop-filter: blur(4px);
       touch-action: manipulation;
     }
-
     .menu-overlay.visible {
       opacity: 1;
       pointer-events: auto;
     }
+    /* When keyboard is open, panel floats to top */
+    .menu-overlay.kbd-open {
+      justify-content: flex-start;
+      padding-top: 4px;
+    }
 
     .menu-panel {
-      width: min(92vw, 420px);
-      border-radius: 18px;
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      background: rgba(18, 18, 20, 0.58);
-      box-shadow: 0 22px 60px rgba(0, 0, 0, 0.38);
+      width: min(96vw, 440px);
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.16);
+      background: rgba(18,18,20,0.72);
+      box-shadow: 0 16px 48px rgba(0,0,0,0.4);
       color: #f6f4ef;
       overflow: hidden;
       pointer-events: auto;
@@ -131,277 +116,250 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      padding: 14px 16px 10px;
+      padding: 8px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
     }
 
     .menu-title {
-      font-size: 14px;
+      font-size: 12px;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: rgba(255, 255, 255, 0.72);
+      color: rgba(255,255,255,0.6);
     }
 
-    .menu-note {
-      padding: 0 16px 14px;
-      color: rgba(255, 255, 255, 0.7);
-      font-size: 13px;
-      line-height: 1.35;
+    .menu-ip {
+      font-size: 11px;
+      color: rgba(255,255,255,0.45);
+    }
+
+    .menu-close {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      font: inherit;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      touch-action: manipulation;
+      font-size: 14px;
+    }
+
+    .menu-body {
+      padding: 8px 10px;
+      display: grid;
+      gap: 7px;
     }
 
     .menu-button,
-    .menu-close,
     .menu-primary {
       appearance: none;
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255,255,255,0.14);
       border-radius: 999px;
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(255,255,255,0.08);
       color: #fff;
       font: inherit;
-      font-weight: 650;
-      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 7px 14px;
       cursor: pointer;
       touch-action: manipulation;
     }
 
-    .menu-close {
-      width: 38px;
-      height: 38px;
-      padding: 0;
-      display: grid;
-      place-items: center;
-    }
-
-    .menu-list {
-      display: grid;
-      gap: 10px;
-      padding: 0 16px 16px;
-    }
-
-    .menu-item {
-      display: grid;
-      gap: 8px;
-    }
-
-    .menu-item p {
-      margin: 0;
-      color: rgba(255, 255, 255, 0.7);
-      font-size: 13px;
-      line-height: 1.35;
-    }
-
+    /* ── Network form ── */
     .network-panel {
       display: none;
-      gap: 10px;
-      padding: 0 16px 16px;
+      flex-direction: column;
+      gap: 6px;
     }
-
-    .network-panel.open {
-      display: grid;
-    }
+    .network-panel.open { display: flex; }
 
     .network-panel input[type="text"],
     .network-panel input[type="password"] {
       width: 100%;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 10px;
-      padding: 11px 12px;
-      background: rgba(255, 255, 255, 0.08);
+      box-sizing: border-box;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 8px;
+      padding: 7px 10px;
+      background: rgba(255,255,255,0.08);
       color: #fff;
       font: inherit;
+      font-size: 13px;
+      caret-color: #fff;
     }
+    .network-panel input:focus { outline: none; border-color: rgba(255,255,255,0.4); }
 
     .network-row {
       display: flex;
       align-items: center;
-      gap: 10px;
-      color: rgba(255, 255, 255, 0.8);
-      font-size: 14px;
+      gap: 8px;
+      color: rgba(255,255,255,0.75);
+      font-size: 12px;
     }
 
     .network-actions {
       display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
+      gap: 8px;
     }
 
     .network-status {
-      min-height: 18px;
-      color: rgba(255, 255, 255, 0.8);
-      font-size: 13px;
-      line-height: 1.35;
+      min-height: 16px;
+      color: rgba(255,255,255,0.75);
+      font-size: 12px;
+      line-height: 1.3;
     }
 
+    /* ── Toast ── */
     .message-toast {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
+      top: 0; left: 0; right: 0;
       z-index: 10;
-      padding: 20px 28px;
-      background: rgba(0, 0, 0, 0.82);
+      padding: 16px 24px;
+      background: rgba(0,0,0,0.82);
       backdrop-filter: blur(6px);
       color: #fff;
-      font-size: 22px;
+      font-size: 20px;
       font-weight: 500;
       text-align: center;
       line-height: 1.4;
       transform: translateY(-110%);
       opacity: 0;
-      transition: transform 380ms cubic-bezier(0.34, 1.28, 0.64, 1), opacity 280ms ease;
+      transition: transform 360ms cubic-bezier(0.34,1.28,0.64,1), opacity 260ms ease;
       pointer-events: none;
     }
+    .message-toast.visible { transform: translateY(0); opacity: 1; }
 
-    .message-toast.visible {
-      transform: translateY(0);
-      opacity: 1;
+    /* ── Onscreen keyboard ── */
+    #kbd {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 20;
+      background: rgba(28,28,30,0.98);
+      border-top: 1px solid rgba(255,255,255,0.1);
+      padding: 4px 3px 6px;
+      display: none;
+      flex-direction: column;
+      gap: 3px;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
     }
+    #kbd.open { display: flex; }
+
+    .kbd-row {
+      display: flex;
+      gap: 3px;
+      justify-content: center;
+    }
+
+    .kbd-key {
+      flex: 1;
+      height: 30px;
+      border: none;
+      border-radius: 5px;
+      background: rgba(255,255,255,0.18);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      touch-action: manipulation;
+      min-width: 0;
+      padding: 0;
+    }
+    .kbd-key:active { background: rgba(255,255,255,0.38); }
+    .kbd-fn   { flex: 0 0 46px; background: rgba(255,255,255,0.09); font-size: 11px; }
+    .kbd-wide { flex: 0 0 42px; background: rgba(255,255,255,0.09); font-size: 11px; }
+    .kbd-space { flex: 4; background: rgba(255,255,255,0.14); font-size: 11px; }
   </style>
 </head>
 <body>
   <main id="stage">
-    <div id="slide-a" class="slide">
-      <div class="backdrop"></div>
-      <img alt="">
-    </div>
-    <div id="slide-b" class="slide">
-      <div class="backdrop"></div>
-      <img alt="">
-    </div>
+    <div id="slide-a" class="slide"><div class="backdrop"></div><img alt=""></div>
+    <div id="slide-b" class="slide"><div class="backdrop"></div><img alt=""></div>
     <section id="empty">
-      <div class="empty-inner">
+      <div>
         <h1>Memomatic</h1>
         <p>Waiting for images</p>
       </div>
     </section>
     <div id="message-toast" class="message-toast" aria-live="assertive"></div>
+
     <div id="menu-overlay" class="menu-overlay" aria-hidden="true">
       <div class="menu-panel" role="dialog" aria-label="Device menu">
         <div class="menu-header">
-          <div class="menu-title">Device Menu</div>
-          <button id="menu-close" class="menu-close" type="button" aria-label="Close menu">×</button>
+          <span class="menu-title">Menu</span>
+          <span id="device-ip" class="menu-ip"></span>
+          <button id="menu-close" class="menu-close" type="button" aria-label="Close">×</button>
         </div>
-        <div class="menu-note">Tap anywhere to close &middot; Hold 2&nbsp;s for Wi&#8209;Fi<br><span id="device-ip" style="opacity:0.55;font-size:12px"></span></div>
-        <div class="menu-list">
-          <div class="menu-item">
-            <button id="wifi-option" class="menu-button" type="button">Add network</button>
-            <p>Add a Wi-Fi network so the device can join a new connection.</p>
+        <div class="menu-body">
+          <!-- main options -->
+          <div id="menu-main">
+            <button id="wifi-option" class="menu-button" type="button">Add Wi-Fi network</button>
           </div>
+          <!-- network form -->
+          <form id="network-panel" class="network-panel">
+            <input id="network-ssid" type="text" placeholder="Network name (SSID)" autocomplete="off" readonly>
+            <input id="network-password" type="password" placeholder="Password" autocomplete="off" readonly>
+            <label class="network-row">
+              <input id="network-hidden" type="checkbox"> Hidden network
+            </label>
+            <div class="network-actions">
+              <button class="menu-primary" type="submit">Connect</button>
+              <button id="network-cancel" class="menu-button" type="button">Cancel</button>
+            </div>
+            <div id="network-status" class="network-status"></div>
+          </form>
         </div>
-        <form id="network-panel" class="network-panel">
-          <input id="network-ssid" type="text" placeholder="Network name (SSID)" autocomplete="off">
-          <input id="network-password" type="password" placeholder="Password" autocomplete="off">
-          <label class="network-row">
-            <input id="network-hidden" type="checkbox">
-            Hidden network
-          </label>
-          <div class="network-actions">
-            <button class="menu-primary" type="submit">Connect</button>
-            <button id="network-cancel" class="menu-button" type="button">Cancel</button>
-          </div>
-          <div id="network-status" class="network-status"></div>
-        </form>
       </div>
     </div>
   </main>
 
+  <!-- Onscreen keyboard -->
+  <div id="kbd" aria-hidden="true">
+    <div class="kbd-row" id="krow0"></div>
+    <div class="kbd-row" id="krow1"></div>
+    <div class="kbd-row" id="krow2"></div>
+    <div class="kbd-row">
+      <button class="kbd-key kbd-fn" id="kbd-mode">123</button>
+      <button class="kbd-key kbd-space" id="kbd-space">space</button>
+      <button class="kbd-key kbd-fn" id="kbd-done">Done</button>
+    </div>
+  </div>
+
   <script>
-    const slides = [
-      document.getElementById('slide-a'),
-      document.getElementById('slide-b')
-    ];
+    // ── Slideshow ──────────────────────────────────────────────────────────
+    const slides = [document.getElementById('slide-a'), document.getElementById('slide-b')];
     const empty = document.getElementById('empty');
     const messageToast = document.getElementById('message-toast');
-    const menuOverlay = document.getElementById('menu-overlay');
-    const menuClose = document.getElementById('menu-close');
-    const wifiOption = document.getElementById('wifi-option');
-    const networkPanel = document.getElementById('network-panel');
-    const networkSsid = document.getElementById('network-ssid');
-    const networkPassword = document.getElementById('network-password');
-    const networkHidden = document.getElementById('network-hidden');
-    const networkCancel = document.getElementById('network-cancel');
-    const networkStatus = document.getElementById('network-status');
-    let currentId = null;
-    let activeSlide = 0;
-    let pollMs = 2000;
-    let pollInterval = null;
-    let menuTimer = null;
-    let menuVisible = false;
-    let connecting = false;
-    let currentMessageId = null;
-    let messageTimer = null;
+    let currentId = null, activeSlide = 0, pollMs = 2000, pollInterval = null;
+    let currentMessageId = null, messageTimer = null;
 
     function setSlide(slide, url) {
       slide.querySelector('img').src = url;
       slide.querySelector('.backdrop').style.backgroundImage = `url("${url}")`;
     }
 
-    function setNetworkStatus(message) {
-      networkStatus.textContent = message || '';
-    }
-
     function showMessage(msg, durationMs) {
       if (currentMessageId === msg.id) return;
       currentMessageId = msg.id;
-      window.clearTimeout(messageTimer);
+      clearTimeout(messageTimer);
       messageToast.textContent = msg.content;
       messageToast.classList.add('visible');
-      messageTimer = window.setTimeout(async () => {
+      messageTimer = setTimeout(async () => {
         messageToast.classList.remove('visible');
         currentMessageId = null;
-        try {
-          await fetch(`/api/messages/${msg.id}/shown`, { method: 'POST' });
-        } catch (_) {}
+        try { await fetch(`/api/messages/${msg.id}/shown`, { method: 'POST' }); } catch (_) {}
       }, durationMs);
-    }
-
-    function hideMenu() {
-      window.clearTimeout(menuTimer);
-      menuTimer = null;
-      menuVisible = false;
-      menuOverlay.classList.remove('visible');
-      menuOverlay.setAttribute('aria-hidden', 'true');
-      networkPanel.classList.remove('open');
-    }
-
-    function scheduleMenuHide(ms) {
-      window.clearTimeout(menuTimer);
-      menuTimer = window.setTimeout(hideMenu, ms || 3500);
-    }
-
-    function showMenu() {
-      menuVisible = true;
-      menuOverlay.classList.add('visible');
-      menuOverlay.setAttribute('aria-hidden', 'false');
-      scheduleMenuHide();
-      fetch('/api/network/ip')
-        .then(r => r.json())
-        .then(d => {
-          const el = document.getElementById('device-ip');
-          if (el && d.ip && d.ip !== 'unknown') el.textContent = 'IP ' + d.ip;
-        })
-        .catch(() => {});
-    }
-
-    function toggleMenu() {
-      if (menuVisible) {
-        scheduleMenuHide();
-        return;
-      }
-      showMenu();
-    }
-
-    function openNetworkPanel() {
-      networkPanel.classList.add('open');
-      setNetworkStatus('');
-      scheduleMenuHide(60000);
-      window.setTimeout(() => networkSsid.focus(), 0);
     }
 
     async function refresh() {
       try {
-        const response = await fetch('/api/slideshow/current', { cache: 'no-store' });
-        const data = await response.json();
+        const r = await fetch('/api/slideshow/current', { cache: 'no-store' });
+        const data = await r.json();
         if (data.display) {
           document.documentElement.style.setProperty('--backdrop-blur', `${data.display.backdrop_blur_px}px`);
           document.documentElement.style.setProperty('--backdrop-brightness', String(data.display.backdrop_brightness));
@@ -409,117 +367,223 @@
         const newPollMs = Math.max(1000, Math.min(5000, Math.floor((data.slide_seconds || 15) * 1000 / 4)));
         if (newPollMs !== pollMs) {
           pollMs = newPollMs;
-          if (pollInterval) window.clearInterval(pollInterval);
-          pollInterval = window.setInterval(() => refresh(), pollMs);
+          clearInterval(pollInterval);
+          pollInterval = setInterval(refresh, pollMs);
         }
-        if (data.message) {
-          showMessage(data.message, (data.message_display_seconds || 8) * 1000);
-        }
-
+        if (data.message) showMessage(data.message, (data.message_display_seconds || 8) * 1000);
         if (!data.image) {
           currentId = null;
-          slides.forEach(slide => slide.classList.remove('visible'));
+          slides.forEach(s => s.classList.remove('visible'));
           empty.classList.add('visible');
           return;
         }
-
         empty.classList.remove('visible');
         if (data.image.id !== currentId) {
           currentId = data.image.id;
           const url = `${data.image.url}?t=${Date.now()}`;
           const next = new Image();
           next.onload = () => {
-            const nextSlideIndex = activeSlide === 0 ? 1 : 0;
-            const nextSlide = slides[nextSlideIndex];
-            const previousSlide = slides[activeSlide];
-            setSlide(nextSlide, url);
-            nextSlide.classList.add('visible');
-            previousSlide.classList.remove('visible');
-            activeSlide = nextSlideIndex;
+            const ni = activeSlide === 0 ? 1 : 0;
+            setSlide(slides[ni], url);
+            slides[ni].classList.add('visible');
+            slides[activeSlide].classList.remove('visible');
+            activeSlide = ni;
           };
           next.src = url;
         } else if (!slides[activeSlide].classList.contains('visible')) {
           slides[activeSlide].classList.add('visible');
         }
-      } catch (error) {
-        console.error(error);
-      }
+      } catch (e) { console.error(e); }
+    }
+
+    // ── Menu ──────────────────────────────────────────────────────────────
+    const menuOverlay = document.getElementById('menu-overlay');
+    const menuMain    = document.getElementById('menu-main');
+    const networkPanel = document.getElementById('network-panel');
+    const networkSsid  = document.getElementById('network-ssid');
+    const networkPass  = document.getElementById('network-password');
+    const networkHidden = document.getElementById('network-hidden');
+    const networkCancel = document.getElementById('network-cancel');
+    const networkStatus = document.getElementById('network-status');
+    let menuVisible = false, connecting = false;
+
+    function hideMenu() {
+      menuVisible = false;
+      menuOverlay.classList.remove('visible');
+      menuOverlay.setAttribute('aria-hidden', 'true');
+      networkPanel.classList.remove('open');
+      menuMain.style.display = '';
+      networkStatus.textContent = '';
+      hideKeyboard();
+    }
+
+    function showMenu() {
+      menuVisible = true;
+      menuOverlay.classList.add('visible');
+      menuOverlay.setAttribute('aria-hidden', 'false');
+      fetch('/api/network/ip').then(r => r.json()).then(d => {
+        const el = document.getElementById('device-ip');
+        if (el && d.ip && d.ip !== 'unknown') el.textContent = d.ip;
+      }).catch(() => {});
+    }
+
+    function openNetworkPanel() {
+      menuMain.style.display = 'none';
+      networkPanel.classList.add('open');
+      networkStatus.textContent = '';
     }
 
     async function connectNetwork(event) {
       event.preventDefault();
       const ssid = networkSsid.value.trim();
-      const password = networkPassword.value;
-      if (!ssid) {
-        setNetworkStatus('Enter a network name.');
-        return;
-      }
+      if (!ssid) { networkStatus.textContent = 'Enter a network name.'; return; }
       connecting = true;
-      window.clearTimeout(menuTimer);
-      menuTimer = null;
-      setNetworkStatus('Connecting…');
+      networkStatus.textContent = 'Connecting…';
       try {
-        const response = await fetch('/api/network/connect', {
+        const r = await fetch('/api/network/connect', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ssid,
-            password,
-            hidden: networkHidden.checked
-          })
+          body: JSON.stringify({ ssid, password: networkPass.value, hidden: networkHidden.checked })
         });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(data.detail || response.statusText || 'Unable to add the network.');
-        }
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail || r.statusText || 'Unable to connect.');
         networkSsid.value = '';
-        networkPassword.value = '';
+        networkPass.value = '';
         networkHidden.checked = false;
-        setNetworkStatus(data.message || 'Connected.');
-      } catch (error) {
-        setNetworkStatus(error.message);
+        networkStatus.textContent = data.message || 'Connected.';
+      } catch (e) {
+        networkStatus.textContent = e.message;
       }
       connecting = false;
-      scheduleMenuHide();
     }
 
-    // Touch interaction model (for xdotool mousedown/mouseup injection at fixed position):
-    //   Short tap  → show menu (if hidden) | immediately hide menu (if visible)
-    //   Long press (≥2 s) → open WiFi panel directly
-    //
-    // A single pointerdown listener records the gesture start; pointerup acts on it.
-    // A click fallback handles drivers that emit click without prior pointer events.
+    document.getElementById('menu-close').addEventListener('click', hideMenu);
+    document.getElementById('wifi-option').addEventListener('click', openNetworkPanel);
+    networkCancel.addEventListener('click', () => { hideKeyboard(); networkPanel.classList.remove('open'); menuMain.style.display = ''; networkStatus.textContent = ''; });
+    networkPanel.addEventListener('submit', connectNetwork);
 
-    let lastInteractionTime = 0;
-    let pointerDownAt = 0;
-    let longPressTimer = null;
-    let menuShownThisGesture = false;
-    let longPressActivated = false;
+    // ── Onscreen keyboard ─────────────────────────────────────────────────
+    const kbd = document.getElementById('kbd');
+    const KB_ALPHA = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+    const KB_NUM   = ['1234567890', '@#$%-+=_!?', '&*.,;:\'"('];
+    let kbdMode = 'alpha', kbdShift = false, kbdTarget = null, kbdBlurTimer = null;
 
-    function _cancelLongPress() {
-      clearTimeout(longPressTimer);
-      longPressTimer = null;
+    function buildKbd() {
+      const rows = kbdMode === 'alpha' ? KB_ALPHA : KB_NUM;
+      document.getElementById('kbd-mode').textContent = kbdMode === 'alpha' ? '123' : 'ABC';
+      rows.forEach((chars, i) => {
+        const row = document.getElementById(`krow${i}`);
+        row.innerHTML = '';
+        // shift key on row 2 (alpha only)
+        if (kbdMode === 'alpha' && i === 2) {
+          const s = document.createElement('button');
+          s.className = 'kbd-key kbd-wide'; s.dataset.action = 'shift';
+          s.textContent = kbdShift ? '⇪' : '⇧'; row.appendChild(s);
+        }
+        for (const ch of chars) {
+          const b = document.createElement('button');
+          b.className = 'kbd-key';
+          const disp = (kbdMode === 'alpha' && kbdShift) ? ch.toUpperCase() : ch;
+          b.textContent = disp; b.dataset.char = disp; row.appendChild(b);
+        }
+        // backspace on row 0, enter on row 1
+        if (i === 0) {
+          const b = document.createElement('button');
+          b.className = 'kbd-key kbd-wide'; b.dataset.action = 'bsp'; b.textContent = '⌫'; row.appendChild(b);
+        }
+        if (i === 1) {
+          const b = document.createElement('button');
+          b.className = 'kbd-key kbd-wide'; b.dataset.action = 'next'; b.textContent = '↵'; row.appendChild(b);
+        }
+      });
     }
 
-    document.addEventListener('pointerdown', (event) => {
+    function showKeyboard(target) {
+      clearTimeout(kbdBlurTimer);
+      kbdTarget = target;
+      kbdMode = 'alpha'; kbdShift = false;
+      buildKbd();
+      kbd.classList.add('open');
+      kbd.setAttribute('aria-hidden', 'false');
+      menuOverlay.classList.add('kbd-open');
+    }
+
+    function hideKeyboard() {
+      clearTimeout(kbdBlurTimer);
+      kbdTarget = null;
+      kbd.classList.remove('open');
+      kbd.setAttribute('aria-hidden', 'true');
+      menuOverlay.classList.remove('kbd-open');
+    }
+
+    // readonly inputs so mobile browser doesn't open native keyboard;
+    // remove readonly on focus so caret is visible
+    [networkSsid, networkPass].forEach(inp => {
+      inp.addEventListener('pointerdown', e => {
+        e.stopPropagation();
+        clearTimeout(kbdBlurTimer);
+        showKeyboard(inp);
+      });
+      inp.addEventListener('focus', () => { inp.removeAttribute('readonly'); });
+      inp.addEventListener('blur', () => {
+        inp.setAttribute('readonly', '');
+        kbdBlurTimer = setTimeout(hideKeyboard, 200);
+      });
+    });
+
+    kbd.addEventListener('pointerdown', e => {
+      e.stopPropagation();
+      clearTimeout(kbdBlurTimer);
+    });
+
+    kbd.addEventListener('click', e => {
+      e.stopPropagation();
+      const btn = e.target.closest('.kbd-key');
+      if (!btn) return;
+      clearTimeout(kbdBlurTimer);
+
+      const action = btn.dataset.action;
+      if (action === 'shift') { kbdShift = !kbdShift; buildKbd(); return; }
+      if (action === 'bsp')   { if (kbdTarget) kbdTarget.value = kbdTarget.value.slice(0,-1); return; }
+      if (action === 'next')  {
+        if (kbdTarget === networkSsid) { networkPass.focus(); showKeyboard(networkPass); }
+        else hideKeyboard();
+        return;
+      }
+      if (btn.id === 'kbd-mode')  { kbdMode = kbdMode === 'alpha' ? 'num' : 'alpha'; buildKbd(); return; }
+      if (btn.id === 'kbd-space') { if (kbdTarget) kbdTarget.value += ' '; return; }
+      if (btn.id === 'kbd-done')  { hideKeyboard(); return; }
+      if (btn.dataset.char && kbdTarget) {
+        kbdTarget.value += btn.dataset.char;
+        if (kbdShift) { kbdShift = false; buildKbd(); }
+      }
+    });
+
+    buildKbd();
+
+    // ── Touch / pointer interaction ────────────────────────────────────────
+    // Short tap  → show menu (if hidden) | hide menu (if visible and not in panel)
+    // Long press (≥2 s) → open WiFi panel directly
+    let lastInteraction = 0, pointerDownAt = 0, longPressTimer = null;
+    let menuShownThisGesture = false, longPressActivated = false;
+
+    function cancelLongPress() { clearTimeout(longPressTimer); longPressTimer = null; }
+
+    document.addEventListener('pointerdown', e => {
+      // Don't interfere with keyboard
+      if (e.target.closest('#kbd')) return;
       const t = Date.now();
-      if (t - lastInteractionTime < 150) return;
-      lastInteractionTime = t;
+      if (t - lastInteraction < 150) return;
+      lastInteraction = t;
       pointerDownAt = t;
       menuShownThisGesture = false;
       longPressActivated = false;
 
-      if (menuVisible && event.target && event.target.closest && event.target.closest('.menu-panel')) {
-        if (!connecting) scheduleMenuHide();
-        return;
-      }
+      if (menuVisible && e.target.closest('.menu-panel')) return;
 
-      event.preventDefault();
+      e.preventDefault();
 
-      if (!menuVisible) {
-        showMenu();
-        menuShownThisGesture = true;
-      }
+      if (!menuVisible) { showMenu(); menuShownThisGesture = true; }
 
       if (!connecting) {
         longPressTimer = setTimeout(() => {
@@ -531,59 +595,31 @@
       }
     }, { capture: true });
 
-    document.addEventListener('pointerup', (event) => {
-      _cancelLongPress();
+    document.addEventListener('pointerup', e => {
+      if (e.target.closest('#kbd')) return;
+      cancelLongPress();
       if (!pointerDownAt) return;
       pointerDownAt = 0;
-
-      if (event.target && event.target.closest && event.target.closest('.menu-panel')) {
-        return;
-      }
-
-      if (menuVisible && !menuShownThisGesture && !longPressActivated && !connecting) {
-        hideMenu();
-      }
+      if (e.target.closest('.menu-panel')) return;
+      if (menuVisible && !menuShownThisGesture && !longPressActivated && !connecting) hideMenu();
       menuShownThisGesture = false;
       longPressActivated = false;
     }, { capture: true, passive: false });
 
     // click fallback for drivers that emit click without pointer events
-    document.addEventListener('click', (event) => {
+    document.addEventListener('click', e => {
+      if (e.target.closest('#kbd')) return;
       const t = Date.now();
-      if (t - lastInteractionTime < 300) return;
-      lastInteractionTime = t;
-
-      if (menuVisible && event.target && event.target.closest && event.target.closest('.menu-panel')) {
-        if (!connecting) scheduleMenuHide();
-        return;
-      }
-      event.preventDefault();
-      if (!menuVisible) {
-        showMenu();
-      } else if (!connecting) {
-        hideMenu();
-      }
+      if (t - lastInteraction < 300) return;
+      lastInteraction = t;
+      if (e.target.closest('.menu-panel')) return;
+      e.preventDefault();
+      if (!menuVisible) showMenu();
+      else if (!connecting) hideMenu();
     }, { capture: true });
 
-    document.addEventListener('keydown', () => {
-      _cancelLongPress();
-      if (menuVisible && !connecting) scheduleMenuHide();
-    });
-
-    menuClose.addEventListener('click', hideMenu);
-
-    wifiOption.addEventListener('click', openNetworkPanel);
-
-    networkCancel.addEventListener('click', () => {
-      networkPanel.classList.remove('open');
-      setNetworkStatus('');
-      scheduleMenuHide();
-    });
-
-    networkPanel.addEventListener('submit', connectNetwork);
-
     refresh();
-    pollInterval = window.setInterval(() => refresh(), pollMs);
+    pollInterval = setInterval(refresh, pollMs);
   </script>
 </body>
 </html>

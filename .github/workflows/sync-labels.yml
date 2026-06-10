@@ -1,0 +1,111 @@
+name: Sync labels and triage issues
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/labels.yml
+      - .github/workflows/sync-labels.yml
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  sync-labels:
+    name: Sync labels from labels.yml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync labels
+        uses: crazy-max/ghaction-github-labeler@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          yaml-file: .github/labels.yml
+          skip-delete: true
+          dry-run: false
+
+  triage-issues:
+    name: Apply taxonomy labels to existing issues
+    runs-on: ubuntu-latest
+    needs: sync-labels
+    steps:
+      - name: Apply labels to open issues
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+
+            // Issue → labels mapping
+            // Keeps old generic labels and adds new taxonomy labels on top.
+            const triage = [
+              {
+                number: 1,
+                add: [
+                  'type: feature',
+                  'area: hardware',
+                  'area: app',
+                  'maintainer: human',
+                  'status: needs-triage',
+                ],
+              },
+              {
+                number: 3,
+                add: [
+                  'type: bug',
+                  'area: hardware',
+                  'maintainer: paired',
+                  'status: needs-triage',
+                ],
+              },
+              {
+                number: 4,
+                add: [
+                  'type: task',
+                  'area: hardware',
+                  'maintainer: paired',
+                  'status: needs-triage',
+                ],
+              },
+              {
+                number: 5,
+                add: [
+                  'type: feature',
+                  'area: hardware',
+                  'maintainer: paired',
+                  'status: needs-triage',
+                ],
+              },
+              {
+                number: 7,
+                add: [
+                  'type: task',
+                  'area: deploy',
+                  'maintainer: ai',
+                  'status: needs-triage',
+                ],
+              },
+              {
+                number: 8,
+                add: [
+                  'type: task',
+                  'area: docs',
+                  'maintainer: ai',
+                  'status: in-progress',
+                ],
+              },
+            ];
+
+            for (const issue of triage) {
+              console.log(`Labeling issue #${issue.number}...`);
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: issue.number,
+                labels: issue.add,
+              });
+              console.log(`  Added: ${issue.add.join(', ')}`);
+            }

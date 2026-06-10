@@ -439,7 +439,11 @@
       menuOverlay.setAttribute('aria-hidden', 'false');
       fetch('/api/network/ip').then(r => r.json()).then(d => {
         const el = document.getElementById('device-ip');
-        if (el && d.ip && d.ip !== 'unknown') el.textContent = d.ip;
+        if (!el) return;
+        const parts = [];
+        if (d.mdns && d.mdns !== 'unknown') parts.push(d.mdns + ':8080');
+        if (d.ip && d.ip !== 'unknown') parts.push(d.ip);
+        if (parts.length) el.textContent = parts.join('  ');
       }).catch(() => {});
     }
 

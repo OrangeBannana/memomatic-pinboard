@@ -23,10 +23,13 @@
  *
  * Build:  gcc -O2 -o spi_touch_read spi_touch_read.c
  *
- * Calibration source: /etc/X11/xorg.conf.d/99-calibration.conf
- *   Option "Calibration" "3936 227 268 3880"   (phys-X range / phys-Y range)
- *   Option "SwapAxes"    "1"                   (physical X → screen Y, Y → X)
- * X11 display: 480×320  (confirmed: xdotool center = 240,160)
+ * Calibration derived from 4-corner ADC measurement on this device
+ * (see raw_touch.py).  Updated in /etc/X11/xorg.conf.d/99-calibration.conf:
+ *   Option "Calibration" "1839 263 212 1857"
+ *   Option "SwapAxes"    "1"
+ * physical Y (CMD_Y 0x90) → screen X:  raw 212..1857 → 0..479
+ * physical X (CMD_X 0xD0) → screen Y:  raw 1839..263 → 0..319 (inverted)
+ * X11 display: 480×320
  */
 #include <stdio.h>
 #include <stdint.h>

@@ -19,7 +19,6 @@ There is no test suite, linter config, or package manager manifest beyond `requi
 ### Local dev (Linux / WSL2 / macOS) — recommended
 
 ```bash
-# First time only
 pip install -r requirements.txt   # fastapi, uvicorn[standard], python-multipart, qrcode, Pillow
 
 ./run-local.sh   # starts on http://127.0.0.1:8080  (owner token: dev)

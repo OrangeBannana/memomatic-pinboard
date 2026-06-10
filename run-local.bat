@@ -12,6 +12,6 @@ setlocal
 REM Convert Windows path to a WSL path (e.g. C:\Users\... → /mnt/c/Users/...)
 for /f "delims=" %%i in ('wsl wslpath -u "%~dp0"') do set WSL_DIR=%%i
 
-wsl bash -c "cd '%WSL_DIR%' && sh run-local.sh"
+wsl sh "%WSL_DIR%/run-local.sh"
 
 endlocal

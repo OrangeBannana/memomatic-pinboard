@@ -1,0 +1,21 @@
+#!/bin/sh
+# Stub sudo for local/WSL testing.
+# app/app.py calls: sudo /usr/bin/nmcli <args>
+# This script intercepts that and routes /usr/bin/nmcli calls to the nmcli
+# stub in the same directory, while passing through any other commands.
+
+STUB_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# First argument is the command (sudo has no flags in app.py's invocation).
+cmd="$1"
+shift
+
+case "$cmd" in
+  /usr/bin/nmcli|nmcli)
+    exec "$STUB_DIR/nmcli" "$@"
+    ;;
+  *)
+    # For anything else, try to run the real command.
+    exec "$cmd" "$@"
+    ;;
+esac

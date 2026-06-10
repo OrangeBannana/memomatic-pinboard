@@ -1,0 +1,57 @@
+#!/bin/sh
+# Stub nmcli for local/WSL testing.
+# Handles the exact nmcli subcommands used by app/app.py so the Wi-Fi API
+# endpoints return sensible fake data instead of failing with "command not found".
+#
+# Subcommands handled:
+#   nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY dev wifi list --rescan yes
+#   nmcli dev wifi connect <ssid> [hidden yes] [password <pwd>]
+#   nmcli connection add type wifi con-name <ssid> ssid <ssid> [...]
+
+_args="$*"
+
+case "$_args" in
+  *"dev wifi list"*)
+    # Return canned scan results.  Format: IN-USE:SSID:SIGNAL:SECURITY
+    # The asterisk (*) in IN-USE marks the currently connected network.
+    echo "*:HomeNetwork:85:WPA2"
+    echo ":OfficeWifi:72:WPA2"
+    echo ":CafeGuest:55:"
+    echo ":NeighbourNet:40:WPA2"
+    exit 0
+    ;;
+  *"dev wifi connect"*)
+    # Extract SSID (first positional arg after "connect").
+    ssid=""
+    prev=""
+    for arg in "$@"; do
+      if [ "$prev" = "connect" ]; then
+        ssid="$arg"
+        break
+      fi
+      prev="$arg"
+    done
+    ssid="${ssid:-unknown}"
+    echo "Device 'wlan0' successfully activated with '00000000-stub-0000-0000-000000000000'."
+    exit 0
+    ;;
+  *"connection add"*)
+    # Stub for saving a network profile without connecting.
+    con_name=""
+    prev=""
+    for arg in "$@"; do
+      if [ "$prev" = "con-name" ]; then
+        con_name="$arg"
+        break
+      fi
+      prev="$arg"
+    done
+    con_name="${con_name:-stub}"
+    echo "Connection '$con_name' (00000000-stub-0000-0000-000000000000) successfully added."
+    exit 0
+    ;;
+  *)
+    echo "nmcli stub: unhandled command: $*" >&2
+    exit 1
+    ;;
+esac

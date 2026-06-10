@@ -5,16 +5,22 @@ touch_test.py  —  Standalone touch validator for Memomatic Pi
 Ground-up touchscreen tester. Does NOT use xdotool or X11 — purely
 validates the hardware detection layer independently of the main app.
 
-Run as root:
-    sudo python3 app/touch_test.py              # system check + both methods (30s each)
-    sudo python3 app/touch_test.py --method evdev
-    sudo python3 app/touch_test.py --method gpio
-    sudo python3 app/touch_test.py --duration 60
-    sudo python3 app/touch_test.py --no-fb      # skip framebuffer visualisation
+By default it stops pinboard-kiosk and pinboard-touch before running so
+that touch_bridge.py and Chromium don't race for the SPI bus or
+overwrite the framebuffer.  Both services are restarted on exit.
 
-Output: verbose console log + optional RGB565 crosshair on /dev/fb0.
-Each touch event prints a timestamped line with raw ADC values and
-computed screen coordinates so calibration problems are easy to spot.
+Run as root:
+    sudo python3 app/touch_test.py              # both methods, 30s each
+    sudo python3 app/touch_test.py --method gpio
+    sudo python3 app/touch_test.py --method evdev
+    sudo python3 app/touch_test.py --duration 60
+    sudo python3 app/touch_test.py --no-fb      # console output only
+    sudo python3 app/touch_test.py --keep-services  # skip stop/start
+
+Output: verbose console log + RGB565 crosshair on /dev/fb0 (mirrored to
+TFT by fbcp).  Each touch event prints a timestamped line with raw ADC
+values and computed screen coordinates so calibration problems are easy
+to spot.
 """
 
 import argparse
@@ -35,7 +41,7 @@ FB_W       = 480
 FB_H       = 320
 
 # GPIO17 = T_IRQ (active-low pen-down signal from ADS7846).
-# On this Pi gpiochip0 base = 512, so BCM17 = sysfs gpio 529.
+# gpiochip0 base = 512 on this Pi, so BCM17 = sysfs gpio 529.
 GPIO_BCM   = 17
 GPIO_BASE  = 512
 GPIO_SYSFS = GPIO_BASE + GPIO_BCM   # 529
@@ -46,18 +52,21 @@ EVDEV_DIR  = "/dev/input"
 HELPER     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "spi_touch_read")
 HELPER_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "spi_touch_read.c")
 
+# Services that must be stopped so they don't race for the SPI bus / fb0
+SERVICES_TO_STOP = ["pinboard-kiosk.service", "pinboard-touch.service"]
+
 # ADS7846 calibration — matches /etc/X11/xorg.conf.d/99-calibration.conf
 # Option "Calibration" "3936 227 268 3880"  +  Option "SwapAxes" "1"
 #
 # When reading raw evdev (before X11):
-#   ABS_Y carries physical Y channel (CMD_Y 0x90) → mapped to screen X: 268..3880 → 0..479
-#   ABS_X carries physical X channel (CMD_X 0xD0) → mapped to screen Y: 3936..227 → 0..319
+#   ABS_Y (physical Y channel, CMD_Y 0x90) → screen X: 268..3880 → 0..479
+#   ABS_X (physical X channel, CMD_X 0xD0) → screen Y: 3936..227 → 0..319 (inverted)
 #
-# When using spi_touch_read the calibration is already applied; output is screen coords.
+# spi_touch_read already applies this calibration; its output is screen coords.
 CAL_SCREEN_X_RAW_MIN = 268
 CAL_SCREEN_X_RAW_MAX = 3880
 CAL_SCREEN_Y_RAW_MIN = 3936
-CAL_SCREEN_Y_RAW_MAX = 227   # < MIN because axis is inverted
+CAL_SCREEN_Y_RAW_MAX = 227   # < MIN — axis is inverted
 
 # Linux evdev constants
 EV_FMT    = "llHHi"
@@ -70,14 +79,11 @@ ABS_Y     = 1
 EVIOCGRAB = 0x40044590
 
 # RGB565 palette
-BLACK  = 0x0000
 DKGRAY = 0x2104
 GRID   = 0x4208
 WHITE  = 0xFFFF
 RED    = 0xF800
-GREEN  = 0x07E0
 YELLOW = 0xFFE0
-CYAN   = 0x07FF
 
 # ── Terminal colours ──────────────────────────────────────────────────────────
 GRN = "\033[92m"; RED_T = "\033[91m"; YLW = "\033[93m"
@@ -90,10 +96,50 @@ def info(s): print(f"     {s}")
 def hdr(s):  print(f"\n{CYN}── {s} {'─' * max(0, 54 - len(s))}{RST}")
 
 
+# ── Service management ────────────────────────────────────────────────────────
+
+def service_active(name):
+    r = subprocess.run(["systemctl", "is-active", "--quiet", name])
+    return r.returncode == 0
+
+
+def stop_services():
+    """Stop kiosk and touch services so they don't interfere with the test."""
+    hdr("Stopping conflicting services")
+    for svc in SERVICES_TO_STOP:
+        if service_active(svc):
+            r = subprocess.run(["sudo", "systemctl", "stop", svc],
+                               capture_output=True, text=True)
+            if r.returncode == 0:
+                ok(f"Stopped {svc}")
+            else:
+                warn(f"Could not stop {svc}: {r.stderr.strip()}")
+        else:
+            info(f"{svc} was not running")
+    time.sleep(1)   # give Xorg/touch_bridge a moment to exit
+
+
+def start_services():
+    """Restart services that were stopped before the test."""
+    hdr("Restarting services")
+    for svc in SERVICES_TO_STOP:
+        r = subprocess.run(["sudo", "systemctl", "start", svc],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            ok(f"Started {svc}")
+        else:
+            warn(f"Could not start {svc}: {r.stderr.strip()}")
+
+
 # ── Framebuffer ───────────────────────────────────────────────────────────────
 
 class FB:
-    """Minimal RGB565 framebuffer writer."""
+    """Minimal RGB565 framebuffer writer.
+
+    fbcp-ili9341 keeps running during the test (we only stop kiosk/touch),
+    so it continuously mirrors /dev/fb0 to the TFT — our draws appear on
+    screen immediately.
+    """
 
     def __init__(self):
         self._mm = None
@@ -107,7 +153,7 @@ class FB:
             warn(f"Framebuffer unavailable: {e}")
 
     @property
-    def ok(self):
+    def ready(self):
         return self._mm is not None
 
     def _put(self, x, y, color):
@@ -121,7 +167,7 @@ class FB:
             self._mm.write(struct.pack("<H", color) * (FB_W * FB_H))
 
     def grid(self, step=40, color=GRID):
-        """Draw a faint reference grid so touch position is easy to judge."""
+        """Faint reference grid so touch position is easy to judge visually."""
         for x in range(0, FB_W, step):
             for y in range(FB_H):
                 self._put(x, y, color)
@@ -130,7 +176,6 @@ class FB:
                 self._put(x, y, color)
 
     def crosshair(self, x, y, color=RED, arm=16):
-        """Full-arm crosshair with a bright centre dot."""
         for dx in range(-arm, arm + 1):
             self._put(x + dx, y, color)
         for dy in range(-arm, arm + 1):
@@ -140,7 +185,6 @@ class FB:
                 self._put(x + dx, y + dy, WHITE)
 
     def dot(self, x, y, color=YELLOW, r=4):
-        """Small filled circle — used to mark touch-up position."""
         for dx in range(-r, r + 1):
             for dy in range(-r, r + 1):
                 if dx * dx + dy * dy <= r * r:
@@ -159,7 +203,6 @@ def _gpio_value_path(n=GPIO_SYSFS):
 
 
 def ensure_gpio(n=GPIO_SYSFS):
-    """Export the GPIO sysfs node if not already done. Returns (ok, msg)."""
     vp = _gpio_value_path(n)
     if os.path.exists(vp):
         return True, "already exported"
@@ -178,7 +221,6 @@ def ensure_gpio(n=GPIO_SYSFS):
 
 
 def read_gpio(n=GPIO_SYSFS):
-    """Return 0/1 or -1 on error."""
     try:
         return int(open(_gpio_value_path(n)).read().strip())
     except (OSError, ValueError):
@@ -188,12 +230,7 @@ def read_gpio(n=GPIO_SYSFS):
 # ── Calibration ───────────────────────────────────────────────────────────────
 
 def raw_to_screen(abs_y_raw, abs_x_raw):
-    """
-    Apply xorg calibration to raw evdev ABS values.
-    ABS_Y (physical Y channel) → screen X
-    ABS_X (physical X channel) → screen Y  (inverted range)
-    Returns (sx, sy) clamped to screen bounds.
-    """
+    """Apply xorg calibration to raw evdev ABS values → (screen_x, screen_y)."""
     sx = int((abs_y_raw - CAL_SCREEN_X_RAW_MIN) /
              (CAL_SCREEN_X_RAW_MAX - CAL_SCREEN_X_RAW_MIN) * FB_W)
     sy = int((abs_x_raw - CAL_SCREEN_Y_RAW_MIN) /
@@ -204,23 +241,17 @@ def raw_to_screen(abs_y_raw, abs_x_raw):
 # ── spi_touch_read wrapper ────────────────────────────────────────────────────
 
 def compile_helper():
-    """Try to compile spi_touch_read.c. Returns (success, message)."""
     if not os.path.exists(HELPER_SRC):
         return False, f"source not found: {HELPER_SRC}"
-    r = subprocess.run(
-        ["gcc", "-O2", "-o", HELPER, HELPER_SRC],
-        capture_output=True, text=True,
-    )
+    r = subprocess.run(["gcc", "-O2", "-o", HELPER, HELPER_SRC],
+                       capture_output=True, text=True)
     if r.returncode != 0:
         return False, r.stderr.strip()
     return True, "compiled ok"
 
 
 def call_spi_touch():
-    """
-    Run spi_touch_read binary. Returns (sx, sy) in screen coords or None.
-    The binary already applies calibration; output is "sx sy\\n".
-    """
+    """Run spi_touch_read. Returns (sx, sy) in screen coords or None."""
     try:
         r = subprocess.run([HELPER], capture_output=True, timeout=0.5)
         if r.returncode == 0:
@@ -250,39 +281,34 @@ def system_check():
     if exported:
         val = read_gpio()
         state = {0: f"{GRN}TOUCH ACTIVE{RST}", 1: "idle (no touch)"}.get(val, "read error")
-        ok(f"gpio{GPIO_SYSFS} exported  value={val}  ({state})")
-        info(f"  ({msg})")
+        ok(f"gpio{GPIO_SYSFS} exported  value={val}  ({state})  ({msg})")
     else:
         fail(f"Cannot export gpio{GPIO_SYSFS}: {msg}")
-        warn("The ads7846 kernel driver may still own this GPIO pin.")
 
     hdr("ADS7846 kernel driver binding")
     bound = os.path.exists("/sys/bus/spi/drivers/ads7846/spi0.1")
     if bound:
         warn("ads7846 driver IS bound to spi0.1")
-        info("→ evdev method SHOULD work (kernel driver is active, events go to /dev/input)")
-        info("→ GPIO+SPI method WILL CONFLICT with the driver over the SPI bus")
-        info("  To use GPIO+SPI: echo spi0.1 > /sys/bus/spi/drivers/ads7846/unbind")
+        info("→ evdev method should work  |  GPIO+SPI path needs driver unbound")
     else:
         ok("ads7846 driver is NOT bound to spi0.1")
-        info("→ GPIO+SPI method should work (touch_bridge.py path)")
-        info("→ evdev method will NOT produce events (no kernel driver to generate them)")
+        info("→ GPIO+SPI path (touch_bridge mode) is active")
+        info("→ evdev will have no events without a kernel driver")
 
     hdr("spi_touch_read binary")
     if os.path.exists(HELPER):
         ok(f"Binary found: {HELPER}")
-        # Quick sanity test (should print 'err' when not touching, not crash)
         try:
             r = subprocess.run([HELPER], capture_output=True, timeout=0.5)
             out = r.stdout.decode().strip()
-            info(f"  Test run output: {out!r}  (rc={r.returncode})  "
-                 f"— 'err' is expected when not touching")
+            info(f"  Test call → {out!r}  (rc={r.returncode})")
+            info(f"  'err' is expected when not touching")
         except Exception as e:
-            warn(f"  Test run failed: {e}")
+            warn(f"  Test call failed: {e}")
     else:
         warn(f"Binary not found: {HELPER}")
         if os.path.exists(HELPER_SRC):
-            info("  Attempting to compile from source...")
+            info("  Compiling from source...")
             ok_c, msg_c = compile_helper()
             if ok_c:
                 ok(f"  {msg_c}")
@@ -292,11 +318,26 @@ def system_check():
             fail(f"  Source also missing: {HELPER_SRC}")
 
     hdr("fbcp-ili9341 display driver")
-    r = subprocess.run(["pgrep", "-x", "fbcp"], capture_output=True, text=True)
+    # Match on process name substring — binary is fbcp-ili9341, not plain fbcp
+    r = subprocess.run(["pgrep", "-f", "fbcp"], capture_output=True, text=True)
     if r.returncode == 0:
-        ok(f"fbcp running (pid {r.stdout.strip()})  — spi_touch_read will sync to frame gaps")
+        pid = r.stdout.strip().splitlines()[0]
+        ok(f"fbcp running (pid {pid})  — spi_touch_read will sync to frame gaps")
+        # Show actual binary name
+        try:
+            name = open(f"/proc/{pid}/comm").read().strip()
+            info(f"  Process name: {name}")
+        except OSError:
+            pass
     else:
-        warn("fbcp NOT running — display may be blank; spi_touch_read will attempt reads anyway")
+        warn("fbcp NOT running — display is blank; spi_touch_read reads may fail")
+        info("  Without fbcp the SPI inter-frame sync has nothing to sync to.")
+
+    hdr("Competing services (must be stopped before testing)")
+    for svc in SERVICES_TO_STOP:
+        active = service_active(svc)
+        marker = f"{YLW}running — will be stopped{RST}" if active else f"{GRN}not running{RST}"
+        info(f"  {svc}: {marker}")
 
     hdr(f"Input devices ({EVDEV_DIR})")
     try:
@@ -305,11 +346,12 @@ def system_check():
             for ev in events:
                 np = f"/sys/class/input/{ev}/device/name"
                 name = open(np).read().strip() if os.path.exists(np) else "unknown"
-                marker = f"  {GRN}← likely touch{RST}" if any(
-                    k in name.lower() for k in ("ads7846", "touch", "pen")) else ""
-                ok(f"{EVDEV_DIR}/{ev}  →  {name}{marker}")
+                tag = (f"  {GRN}← likely touch{RST}"
+                       if any(k in name.lower() for k in ("ads7846", "touch", "pen"))
+                       else "")
+                ok(f"{EVDEV_DIR}/{ev}  →  {name}{tag}")
         else:
-            warn("No event devices found in /dev/input")
+            warn("No event devices in /dev/input  (expected when driver is unbound)")
     except OSError as e:
         fail(f"Cannot list {EVDEV_DIR}: {e}")
 
@@ -319,7 +361,6 @@ def system_check():
 def run_evdev(fb, duration):
     hdr(f"Method A: evdev  ({duration}s — touch the screen now)")
 
-    # Find the touch device by name, fall back to event0
     device = None
     try:
         for ev in sorted(os.listdir(EVDEV_DIR)):
@@ -336,34 +377,31 @@ def run_evdev(fb, duration):
 
     if not device:
         device = f"{EVDEV_DIR}/event0"
-        warn(f"No named touch device found — trying {device}")
+        warn(f"No named touch device — trying {device}")
 
     try:
         fd = os.open(device, os.O_RDONLY | os.O_NONBLOCK)
     except OSError as e:
         fail(f"Cannot open {device}: {e}")
+        info("evdev method requires the ads7846 kernel driver to be bound.")
         return 0
 
-    # Test for Xorg EVIOCGRAB
     try:
         fcntl.ioctl(fd, EVIOCGRAB, struct.pack("I", 1))
         fcntl.ioctl(fd, EVIOCGRAB, struct.pack("I", 0))
-        ok("Device is free (not grabbed by Xorg)")
+        ok("Device is free (not grabbed)")
     except OSError as e:
         if e.errno == errno.EBUSY:
-            fail("Device IS GRABBED by Xorg — reads will be empty")
-            info('Fix: add Option "GrabDevice" "off" in xorg InputClass for this device')
+            fail("Device IS GRABBED — evdev reads blocked")
+            info('Fix: Option "GrabDevice" "off" in xorg InputClass config')
             os.close(fd)
             return 0
-        warn(f"EVIOCGRAB: unexpected errno {e.errno}")
+        warn(f"EVIOCGRAB returned errno {e.errno}")
 
     print()
-    info("Raw ADS7846 values are 0–4095. Calibration note:")
-    info(f"  ABS_Y (physical Y channel) → screen X  "
-         f"(raw {CAL_SCREEN_X_RAW_MIN}..{CAL_SCREEN_X_RAW_MAX} → 0..{FB_W - 1})")
-    info(f"  ABS_X (physical X channel) → screen Y  "
-         f"(raw {CAL_SCREEN_Y_RAW_MIN}..{CAL_SCREEN_Y_RAW_MAX} → 0..{FB_H - 1}, inverted)")
-    info("If screen coords look wrong, update CAL_* constants at the top of this file.")
+    info("Raw ADS7846 values are 0–4095.")
+    info(f"  ABS_Y (phys Y) → screen X  raw {CAL_SCREEN_X_RAW_MIN}..{CAL_SCREEN_X_RAW_MAX} → 0..{FB_W-1}")
+    info(f"  ABS_X (phys X) → screen Y  raw {CAL_SCREEN_Y_RAW_MIN}..{CAL_SCREEN_Y_RAW_MAX} → 0..{FB_H-1} (inverted)")
     print()
 
     abs_x_raw = abs_y_raw = 0
@@ -382,27 +420,19 @@ def run_evdev(fb, duration):
 
             if etype == EV_ABS and code == ABS_X:
                 abs_x_raw = value
-                print(f"  [{ts}] ABS_X  raw={value:5d}"
-                      f"  (phys X → screen Y, expect ~{CAL_SCREEN_Y_RAW_MIN}..{CAL_SCREEN_Y_RAW_MAX})",
-                      flush=True)
-
+                print(f"  [{ts}] ABS_X  raw={value:5d}", flush=True)
             elif etype == EV_ABS and code == ABS_Y:
                 abs_y_raw = value
-                print(f"  [{ts}] ABS_Y  raw={value:5d}"
-                      f"  (phys Y → screen X, expect ~{CAL_SCREEN_X_RAW_MIN}..{CAL_SCREEN_X_RAW_MAX})",
-                      flush=True)
-
+                print(f"  [{ts}] ABS_Y  raw={value:5d}", flush=True)
             elif etype == EV_KEY and code == BTN_TOUCH:
                 sx, sy = raw_to_screen(abs_y_raw, abs_x_raw)
                 state_s = f"{GRN}DOWN{RST}" if value else f"{YLW}UP  {RST}"
                 print(f"  [{ts}] BTN_TOUCH {state_s}"
                       f"  raw=({abs_x_raw},{abs_y_raw})"
-                      f"  screen=({sx},{sy})",
-                      flush=True)
-                if fb and fb.ok:
+                      f"  screen=({sx},{sy})", flush=True)
+                if fb and fb.ready:
                     if value:
-                        fb.fill(DKGRAY)
-                        fb.grid()
+                        fb.fill(DKGRAY); fb.grid()
                         fb.crosshair(sx, sy, RED)
                     else:
                         fb.dot(sx, sy, YELLOW)
@@ -410,11 +440,10 @@ def run_evdev(fb, duration):
     os.close(fd)
     print()
     if event_count:
-        ok(f"evdev: {event_count} events received — method is working")
+        ok(f"evdev: {event_count} events — method is working")
     else:
         warn(f"evdev: no events in {duration}s")
-        info("Likely causes: driver is unbound (no kernel driver → no events),")
-        info("               device grabbed by Xorg, or no physical touch occurred.")
+        info("Expected when ads7846 driver is unbound (no kernel driver = no events).")
     return event_count
 
 
@@ -423,28 +452,26 @@ def run_evdev(fb, duration):
 def run_gpio(fb, duration):
     hdr(f"Method B: GPIO{GPIO_BCM} poll + spi_touch_read  ({duration}s — touch the screen now)")
 
-    # Ensure GPIO is accessible
     exported, msg = ensure_gpio()
     if not exported:
         fail(f"GPIO{GPIO_SYSFS} not available: {msg}")
-        info("Is the ads7846 driver still bound? It may own this GPIO.")
         return 0
 
-    # Ensure binary exists
     if not os.path.exists(HELPER):
         ok_c, msg_c = compile_helper()
         if not ok_c:
-            fail(f"spi_touch_read not available: {msg_c}")
+            fail(f"spi_touch_read unavailable: {msg_c}")
             return 0
         ok("Compiled spi_touch_read on the fly")
 
-    ok(f"GPIO{GPIO_SYSFS} ready  (0=touch, 1=idle)  polling every 20 ms")
-    ok(f"Coordinates from: {HELPER}")
-    info("spi_touch_read already applies calibration; output is screen coords directly.")
+    ok(f"Polling GPIO{GPIO_SYSFS} at 20 ms  (0=touch, 1=idle)")
+    ok(f"Coordinates via {HELPER}  (output is already calibrated screen coords)")
     print()
 
-    prev_irq   = 1
+    prev_irq    = 1
     touch_count = 0
+    spi_ok      = 0
+    spi_err     = 0
     last_down   = 0.0
     deadline    = time.time() + duration
 
@@ -459,40 +486,44 @@ def run_gpio(fb, duration):
             continue
 
         if prev_irq == 1 and irq == 0:
-            # Rising edge → touch down
             touch_count += 1
             last_down = now
             coords = call_spi_touch()
             if coords:
+                spi_ok += 1
                 sx, sy = coords
-                print(f"  [{now:.4f}] {GRN}TOUCH DOWN{RST}  screen=({sx:3d},{sy:3d})",
-                      flush=True)
-                if fb and fb.ok:
+                print(f"  [{now:.4f}] {GRN}TOUCH DOWN{RST}  screen=({sx:3d},{sy:3d})", flush=True)
+                if fb and fb.ready:
                     fb.fill(DKGRAY)
                     fb.grid()
                     fb.crosshair(sx, sy, RED)
             else:
+                spi_err += 1
                 print(f"  [{now:.4f}] {GRN}TOUCH DOWN{RST}  "
-                      f"{YLW}spi_touch_read returned err{RST}",
-                      flush=True)
-                info("  Possible causes: fbcp not running, SPI bus busy, not touching during read window")
+                      f"{YLW}spi_touch_read=err{RST}  "
+                      f"(ok={spi_ok} err={spi_err})", flush=True)
 
         elif prev_irq == 0 and irq == 1:
-            # Falling edge → touch up
             held = now - last_down if last_down else 0.0
-            print(f"  [{now:.4f}] {YLW}TOUCH UP  {RST} held={held:.3f}s",
-                  flush=True)
+            print(f"  [{now:.4f}] {YLW}TOUCH UP{RST}   held={held:.3f}s", flush=True)
 
         prev_irq = irq
         time.sleep(0.02)
 
     print()
     if touch_count:
-        ok(f"GPIO method: {touch_count} touch-down events detected — method is working")
+        ok(f"GPIO: {touch_count} touch-down events  "
+           f"(spi coords: {spi_ok} ok / {spi_err} err)")
+        if spi_err and not spi_ok:
+            warn("spi_touch_read failed on every touch.")
+            info("fbcp must be running for the inter-frame sync to work.")
+            info("Check: pgrep -f fbcp  — if nothing, start fbcp manually.")
+            info("The ADS7846 raw-read filter (50–4050) may also be too tight;")
+            info("try touching a different screen area or adjusting pressure.")
     else:
-        warn(f"GPIO method: no touch-down events in {duration}s")
-        info("Possible causes: ads7846 driver still bound and owns the GPIO interrupt,")
-        info("                 wiring issue with T_IRQ (GPIO17), or no physical touch.")
+        warn(f"GPIO: no touches detected in {duration}s")
+        info("Possible: ads7846 driver still bound and owns T_IRQ interrupt,")
+        info("          hardware wiring issue, or no physical touch during window.")
     return touch_count
 
 
@@ -504,25 +535,19 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
-            "  sudo python3 app/touch_test.py                 # full run, 30s/method\n"
-            "  sudo python3 app/touch_test.py --method evdev  # evdev only\n"
-            "  sudo python3 app/touch_test.py --method gpio   # GPIO+SPI only\n"
-            "  sudo python3 app/touch_test.py --duration 60   # longer window\n"
-            "  sudo python3 app/touch_test.py --no-fb         # console only\n"
+            "  sudo python3 app/touch_test.py\n"
+            "  sudo python3 app/touch_test.py --method gpio --duration 60\n"
+            "  sudo python3 app/touch_test.py --keep-services  # don't stop kiosk\n"
+            "  sudo python3 app/touch_test.py --no-fb          # console only\n"
         ),
     )
-    parser.add_argument(
-        "--method", choices=["evdev", "gpio", "all"], default="all",
-        help="Which detection method to test (default: all)",
-    )
-    parser.add_argument(
-        "--duration", type=int, default=30,
-        help="Seconds to listen per method (default: 30)",
-    )
-    parser.add_argument(
-        "--no-fb", action="store_true",
-        help="Disable framebuffer visualisation",
-    )
+    parser.add_argument("--method", choices=["evdev", "gpio", "all"], default="all")
+    parser.add_argument("--duration", type=int, default=30,
+                        help="Seconds to listen per method (default: 30)")
+    parser.add_argument("--no-fb", action="store_true",
+                        help="Skip framebuffer visualisation")
+    parser.add_argument("--keep-services", action="store_true",
+                        help="Don't stop pinboard-kiosk/touch before testing")
     args = parser.parse_args()
 
     if os.geteuid() != 0:
@@ -535,8 +560,15 @@ def main():
 
     system_check()
 
+    if not args.keep_services:
+        stop_services()
+    else:
+        warn("--keep-services set: kiosk and touch_bridge are still running.")
+        info("spi_touch_read may fail if touch_bridge is also calling it.")
+        info("Framebuffer draws will be overwritten by Chromium.")
+
     fb = FB() if not args.no_fb else None
-    if fb and fb.ok:
+    if fb and fb.ready:
         fb.grid()
 
     evdev_n = gpio_n = 0
@@ -547,32 +579,33 @@ def main():
             gpio_n = run_gpio(fb, args.duration)
     except KeyboardInterrupt:
         print(f"\n{YLW}Interrupted.{RST}")
+    finally:
+        if not args.keep_services:
+            start_services()
+        if fb:
+            fb.close()
 
     hdr("Summary")
-    evdev_r = f"{GRN}✓ {evdev_n} events{RST}" if evdev_n else f"{RED_T}✗ no events{RST}"
-    gpio_r  = f"{GRN}✓ {gpio_n} touches{RST}" if gpio_n else f"{RED_T}✗ no touches{RST}"
-    print(f"  evdev method:   {evdev_r}")
+    evdev_r = (f"{GRN}✓ {evdev_n} events{RST}" if evdev_n
+               else f"{RED_T}✗ no events{RST}")
+    gpio_r  = (f"{GRN}✓ {gpio_n} touches{RST}" if gpio_n
+               else f"{RED_T}✗ no touches{RST}")
+    print(f"  evdev method:    {evdev_r}")
     print(f"  GPIO+SPI method: {gpio_r}")
     print()
 
-    if evdev_n and not gpio_n:
-        info(f"{GRN}→{RST} ads7846 kernel driver is active and working via evdev.")
-        info("  Standard X11 input should work without touch_bridge.")
-        info("  The GPIO+SPI path requires the driver to be unbound first.")
-    elif gpio_n and not evdev_n:
-        info(f"{GRN}→{RST} GPIO+SPI path is working (touch_bridge.py mode).")
-        info("  ads7846 driver appears unbound — evdev will have no events.")
+    if gpio_n and not evdev_n:
+        info(f"{GRN}→{RST} GPIO+SPI path is working (touch_bridge mode).")
+        info("  Next step: verify spi_touch_read coordinates match where you touched.")
+    elif evdev_n and not gpio_n:
+        info(f"{GRN}→{RST} evdev path works. ads7846 driver is active.")
+        info("  Consider using standard X11 input instead of touch_bridge.")
     elif evdev_n and gpio_n:
-        info(f"{YLW}→{RST} Both methods report events — driver may be partially bound.")
-        info("  Prefer evdev if possible: simpler and kernel-managed.")
+        info(f"{YLW}→{RST} Both methods detected touches.")
     else:
-        info(f"{RED_T}→{RST} Neither method detected touch events.")
-        info("  Check: GPIO17 wiring, T_IRQ signal, ads7846 driver binding,")
-        info("         and that you physically touched the screen during each window.")
-
+        info(f"{RED_T}→{RST} No touches detected by either method.")
+        info("  Check GPIO17 wiring, driver binding, and that you touched the screen.")
     print()
-    if fb:
-        fb.close()
 
 
 if __name__ == "__main__":

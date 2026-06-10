@@ -84,6 +84,27 @@ EOF
 
 hostnamectl set-hostname memomatic
 
+# ── Boot-time optimisations ──────────────────────────────────────────────────
+# Raspberry Pi OS Bookworm uses /boot/firmware/config.txt; older releases use
+# /boot/config.txt. Apply to whichever exists.
+for BOOTCFG in /boot/firmware/config.txt /boot/config.txt; do
+  [ -f "$BOOTCFG" ] || continue
+
+  # Disable rainbow splash (the multicolour square shown before the Linux kernel)
+  grep -q "^disable_splash" "$BOOTCFG" || echo "disable_splash=1" >> "$BOOTCFG"
+
+  # Disable on-board Bluetooth — frees up UART and eliminates hciuart.service delay
+  grep -q "^dtoverlay=disable-bt" "$BOOTCFG" || echo "dtoverlay=disable-bt" >> "$BOOTCFG"
+
+  # Reduce GPU memory to minimum (16 MB) — Pi Zero 2 W has no HDMI display
+  if ! grep -q "^gpu_mem" "$BOOTCFG"; then
+    echo "gpu_mem=16" >> "$BOOTCFG"
+  fi
+done
+
+# Mask the Bluetooth modem service so hciuart.service doesn't add a boot delay
+systemctl mask bluetooth.service hciuart.service 2>/dev/null || true
+
 systemctl daemon-reload
 systemctl enable avahi-daemon.service
 systemctl restart avahi-daemon.service

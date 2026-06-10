@@ -39,8 +39,9 @@ jobs:
             const owner = context.repo.owner;
             const repo  = context.repo.repo;
 
-            // Issue → labels mapping
-            // Keeps old generic labels and adds new taxonomy labels on top.
+            // Issue → labels mapping.
+            // addLabels appends without removing existing labels, so any
+            // pre-existing generic labels (e.g. "enhancement", "bug") remain.
             const triage = [
               {
                 number: 1,
@@ -100,12 +101,15 @@ jobs:
             ];
 
             for (const issue of triage) {
-              console.log(`Labeling issue #${issue.number}...`);
-              await github.rest.issues.addLabels({
-                owner,
-                repo,
-                issue_number: issue.number,
-                labels: issue.add,
-              });
-              console.log(`  Added: ${issue.add.join(', ')}`);
+              try {
+                await github.rest.issues.addLabels({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  labels: issue.add,
+                });
+                console.log(`#${issue.number}: added ${issue.add.join(', ')}`);
+              } catch (err) {
+                console.error(`#${issue.number}: failed to add labels — ${err.message}`);
+              }
             }

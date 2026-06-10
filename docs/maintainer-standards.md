@@ -27,7 +27,7 @@ Use an issue for every bug, feature request, maintenance task, or follow-up item
 
 ### Recommended labels
 
-Use `/home/runner/work/memomatic-pinboard/memomatic-pinboard/OrangeBannana/memomatic-pinboard/.github/labels.yml` as the source of truth when creating or syncing repository labels.
+Use `.github/labels.yml` as the source of truth when creating or syncing repository labels.
 
 #### Type
 

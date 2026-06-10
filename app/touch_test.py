@@ -139,16 +139,38 @@ class FB:
     fbcp-ili9341 keeps running during the test (we only stop kiosk/touch),
     so it continuously mirrors /dev/fb0 to the TFT — our draws appear on
     screen immediately.
+
+    Queries actual physical resolution via FBIOGET_VSCREENINFO so the grid
+    and fill cover the whole display even when virtual height != physical
+    height (e.g. double-buffered Xorg framebuffer).
     """
 
+    # FBIOGET_VSCREENINFO ioctl — returns struct fb_var_screeninfo.
+    # First two uint32 fields are xres, yres (physical resolution).
+    _FBIOGET_VSCREENINFO = 0x4600
+    _VINFO_FMT = "II"  # just xres + yres; rest ignored
+
     def __init__(self):
-        self._mm = None
+        self._mm   = None
+        self.w     = FB_W
+        self.h     = FB_H
         try:
             f = open(FB_DEV, "r+b")
-            self._mm = mmap.mmap(f.fileno(), FB_W * FB_H * 2)
+            # Query actual physical resolution
+            try:
+                import fcntl as _fcntl
+                buf = b"\x00" * 160  # struct fb_var_screeninfo is ~160 bytes
+                res = _fcntl.ioctl(f.fileno(), self._FBIOGET_VSCREENINFO, buf)
+                xres, yres = struct.unpack_from(self._VINFO_FMT, res)
+                if xres > 0 and yres > 0:
+                    self.w, self.h = xres, yres
+            except Exception:
+                pass  # fall back to compile-time constants
+            # Map exactly the physical framebuffer (xres × yres × 2 bytes)
+            self._mm = mmap.mmap(f.fileno(), self.w * self.h * 2)
             f.close()
             self.fill(DKGRAY)
-            ok(f"Framebuffer: {FB_DEV}  ({FB_W}×{FB_H} RGB565)")
+            ok(f"Framebuffer: {FB_DEV}  ({self.w}×{self.h} RGB565)")
         except Exception as e:
             warn(f"Framebuffer unavailable: {e}")
 
@@ -157,22 +179,22 @@ class FB:
         return self._mm is not None
 
     def _put(self, x, y, color):
-        if self._mm and 0 <= x < FB_W and 0 <= y < FB_H:
-            self._mm.seek((y * FB_W + x) * 2)
+        if self._mm and 0 <= x < self.w and 0 <= y < self.h:
+            self._mm.seek((y * self.w + x) * 2)
             self._mm.write(struct.pack("<H", color))
 
     def fill(self, color=DKGRAY):
         if self._mm:
             self._mm.seek(0)
-            self._mm.write(struct.pack("<H", color) * (FB_W * FB_H))
+            self._mm.write(struct.pack("<H", color) * (self.w * self.h))
 
     def grid(self, step=40, color=GRID):
         """Faint reference grid so touch position is easy to judge visually."""
-        for x in range(0, FB_W, step):
-            for y in range(FB_H):
+        for x in range(0, self.w, step):
+            for y in range(self.h):
                 self._put(x, y, color)
-        for y in range(0, FB_H, step):
-            for x in range(FB_W):
+        for y in range(0, self.h, step):
+            for x in range(self.w):
                 self._put(x, y, color)
 
     def crosshair(self, x, y, color=RED, arm=16):

@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Repository
+
+All issues, pull requests, and work should target **OrangeBannana/memomatic-pinboard** (this fork). Do not open PRs or issues against the upstream AtomicTrxn/memomatic-pinboard.
+
 ## What this is
 
 Memomatic Pinboard is a single-file FastAPI app that turns a Raspberry Pi Zero 2 W with a 3.5" GPIO TFT into a digital picture frame. The Pi runs the backend plus a fullscreen Chromium kiosk pointed at `/frame`. Phones/laptops on the same Wi-Fi hit `/admin` (owner) or `/guest/<token>` to upload images.

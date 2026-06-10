@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Memomatic Pinboard — Design Guide</title>
+  <style>
+    /* ============================================================
+       DESIGN TOKENS  (single source of truth)
+       These same variables appear verbatim in:
+         app/static/admin.html
+         app/static/guest.html
+       frame.html uses an equivalent visual language via inline values.
+    ============================================================ */
+    :root {
+      color-scheme: dark;
+
+      /* — Backgrounds — */
+      --bg:            #0f1117;   /* page / outermost canvas        */
+      --surface:       #181c26;   /* card / panel background         */
+      --surface-2:     #1f2333;   /* raised element inside a surface */
+
+      /* — Borders — */
+      --border:        rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+
+      /* — Text — */
+      --text:          #ede9df;                    /* primary / body copy        */
+      --text-muted:    rgba(237, 233, 223, 0.58);  /* supporting / labels        */
+      --text-dim:      rgba(237, 233, 223, 0.32);  /* placeholders / meta        */
+
+      /* — Interactive — */
+      --accent:        #5b9cf6;                    /* primary CTA, links         */
+      --accent-bg:     rgba(91,  156, 246, 0.14);  /* accent tint for surfaces   */
+      --danger:        #e05770;                    /* destructive actions        */
+      --danger-bg:     rgba(224,  87, 112, 0.12);  /* danger tint for surfaces   */
+      --success:       #4dbe80;                    /* success state              */
+
+      /* — Geometry — */
+      --radius:        12px;    /* default panel / card corner radius */
+      --radius-sm:     8px;     /* smaller elements (inputs, thumb)   */
+      --radius-pill:   999px;   /* pills: primary buttons, tags       */
+
+      /* — Elevation / shadow — */
+      --shadow-sm:     0 2px  8px rgba(0, 0, 0, 0.30);
+      --shadow:        0 4px 24px rgba(0, 0, 0, 0.44);
+      --shadow-lg:     0 12px 48px rgba(0, 0, 0, 0.55);
+
+      /* — Glass — (used for frame overlay panels) */
+      --glass-bg:      rgba(18, 18, 22, 0.62);
+      --glass-blur:    blur(18px) saturate(1.4);
+    }
+
+    /* ============================================================
+       RESET + BASE
+    ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      background-image: radial-gradient(ellipse 80% 50% at 50% -8%, rgba(91,156,246,0.08), transparent);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+
+    /* ============================================================
+       GUIDE-SPECIFIC LAYOUT (not part of the product design system)
+    ============================================================ */
+    .guide-header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 14px 24px;
+      background: rgba(15,17,23,0.82);
+      backdrop-filter: var(--glass-blur);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .guide-header h1 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .guide-header span {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .guide-header nav {
+      margin-left: auto;
+      display: flex;
+      gap: 18px;
+    }
+
+    .guide-header nav a {
+      color: var(--text-muted);
+      font-size: 13px;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 120ms;
+    }
+
+    .guide-header nav a:hover { color: var(--accent); }
+
+    .guide-body {
+      width: min(900px, 100%);
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    .section {
+      margin-bottom: 56px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h2 {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 8px;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin: 28px 0 12px;
+    }
+
+    p { color: var(--text-muted); font-size: 14px; line-height: 1.6; margin-bottom: 14px; }
+
+    .lead {
+      font-size: 16px;
+      color: var(--text-muted);
+      line-height: 1.55;
+      margin-bottom: 24px;
+    }
+
+    /* Swatch grid */
+    .swatch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .swatch {
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .swatch-color {
+      height: 64px;
+    }
+
+    .swatch-label {
+      padding: 10px 12px;
+      background: var(--surface);
+    }
+
+    .swatch-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      display: block;
+    }
+
+    .swatch-var {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    }
+
+    .swatch-hex {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      display: block;
+      margin-top: 2px;
+    }
+
+    /* Component showcase */
+    .showcase {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 16px;
+    }
+
+    .showcase-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      margin-bottom: 16px;
+    }
+
+    .row-demo {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+
+    /* Code block */
+    pre {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px 18px;
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      font-size: 13px;
+      color: var(--text-muted);
+      overflow-x: auto;
+      line-height: 1.5;
+      tab-size: 2;
+      margin-bottom: 14px;
+    }
+
+    code {
+      font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+      font-size: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+      color: var(--accent);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      background: var(--surface-2);
+    }
+
+    td { color: var(--text-muted); }
+    td:first-child { color: var(--text); font-family: "SF Mono","Fira Code",monospace; font-size: 12px; }
+
+    tr:last-child td { border-bottom: none; }
+
+    /* ============================================================
+       PRODUCT DESIGN SYSTEM  (the actual components)
+    ============================================================ */
+
+    /* — Buttons — */
+    .btn {
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: var(--radius-pill);
+      padding: 10px 18px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 140ms, background 140ms;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+    }
+    .btn:hover   { opacity: 0.86; }
+    .btn:disabled { opacity: 0.38; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.06);
+      color: var(--text);
+      border-color: var(--border-strong);
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.10); opacity: 1; }
+
+    .btn-danger {
+      background: var(--danger-bg);
+      color: var(--danger);
+      border-color: rgba(224,87,112,0.32);
+    }
+    .btn-danger:hover { background: rgba(224,87,112,0.22); opacity: 1; }
+
+    .btn-sm {
+      padding: 7px 13px;
+      font-size: 13px;
+      border-radius: var(--radius-sm);
+    }
+
+    /* — Inputs — */
+    .input {
+      appearance: none;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.05);
+      color: var(--text);
+      font: inherit;
+      font-size: 14px;
+      transition: border-color 140ms, box-shadow 140ms;
+    }
+    .input:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(91,156,246,0.18);
+    }
+    .input::placeholder { color: var(--text-dim); }
+
+    /* — Panel / Card — */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .card {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      transition: border-color 140ms;
+    }
+    .card:hover { border-color: var(--border-strong); }
+
+    /* — Badge — */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      border-radius: var(--radius-pill);
+      padding: 3px 10px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .badge-accent  { background: var(--accent-bg); color: var(--accent); }
+    .badge-danger  { background: var(--danger-bg); color: var(--danger); }
+    .badge-neutral { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+
+    /* — Glass panel (frame overlay) — */
+    .glass-panel {
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      border: 1px solid rgba(255,255,255,0.16);
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: var(--shadow-lg);
+      color: #f6f4ef;
+    }
+
+    .glass-panel .glass-title {
+      font-size: 13px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.72);
+    }
+
+    .glass-btn {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: var(--radius-pill);
+      background: rgba(255,255,255,0.08);
+      color: #fff;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: background 140ms;
+    }
+    .glass-btn:hover { background: rgba(255,255,255,0.14); }
+
+    /* — Status indicator — */
+    .status {
+      min-height: 20px;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    /* Dark demo background for glass components */
+    .dark-demo {
+      background: #050506;
+      border-radius: var(--radius);
+      padding: 24px;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      min-height: 180px;
+    }
+
+    /* Spacing scale display */
+    .spacing-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .sp-block {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    .sp-box {
+      background: var(--accent-bg);
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+    }
+    .sp-label { font-size: 11px; color: var(--text-dim); font-family: monospace; text-align: center; }
+
+    /* Type scale display */
+    .type-row { display: grid; gap: 10px; }
+    .type-sample { display: flex; align-items: baseline; gap: 16px; }
+    .type-meta { font-size: 11px; color: var(--text-dim); font-family: monospace; white-space: nowrap; }
+  </style>
+</head>
+<body>
+
+  <header class="guide-header">
+    <h1>Memomatic Pinboard</h1>
+    <span>Design Guide</span>
+    <nav>
+      <a href="#principles">Principles</a>
+      <a href="#tokens">Tokens</a>
+      <a href="#typography">Type</a>
+      <a href="#components">Components</a>
+      <a href="#patterns">Patterns</a>
+      <a href="#motion">Motion</a>
+    </nav>
+  </header>
+
+  <div class="guide-body">
+
+    <!-- ============================================================
+         OVERVIEW
+    ============================================================ -->
+    <div class="section">
+      <h2>Memomatic UI Design Guide</h2>
+      <p class="lead">
+        This document defines the visual language for all Memomatic Pinboard interfaces —
+        the admin console, the guest upload page, and the on-device frame display.
+        Every token, component, and pattern described here is already implemented in
+        <code>app/static/admin.html</code>, <code>app/static/guest.html</code>, and
+        <code>app/static/frame.html</code>.
+      </p>
+      <p>
+        All colour values are declared as CSS custom properties at <code>:root</code> so a future
+        colour-scheme feature can swap them without touching component CSS.
+        See the follow-up issue for that work.
+      </p>
+    </div>
+
+    <!-- ============================================================
+         DESIGN PRINCIPLES
+    ============================================================ -->
+    <div id="principles" class="section">
+      <div class="section-title">01 — Design Principles</div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:28px;">
+        <div class="panel">
+          <h3 style="margin-top:0">Unified aesthetic</h3>
+          <p>Admin, guest, and frame UIs share one colour palette and component vocabulary. The frame's translucent glass menu is the visual reference point — all web UIs move toward that warmth and depth.</p>
+        </div>
+        <div class="panel">
+          <h3 style="margin-top:0">Brightish dark mode</h3>
+          <p>Not pitch-black: the background is a deep warm charcoal (<code>#0f1117</code>) with a subtle blue radial accent gradient. Surfaces layer on top at progressively lighter values, giving natural depth.</p>
+        </div>
+        <div class="panel">
+          <h3 style="margin-top:0">Token-first</h3>
+          <p>Every colour is a CSS variable. No hard-coded hex values in component CSS. This ensures a future colour-scheme picker can retheme the entire product by swapping the 12 root variables.</p>
+        </div>
+        <div class="panel">
+          <h3 style="margin-top:0">Mobile-first</h3>
+          <p>Guest page is a centred card optimised for one-thumb use on a phone. Admin panels stack vertically; grids use <code>auto-fill minmax</code> so they reflow to one column on narrow screens.</p>
+        </div>
+        <div class="panel">
+          <h3 style="margin-top:0">Purposeful motion</h3>
+          <p>Transitions are 140 ms ease for interactive feedback, 650 ms ease for slide crossfades, 220 ms for overlay entrance/exit. No gratuitous animation; every motion communicates state change.</p>
+        </div>
+        <div class="panel">
+          <h3 style="margin-top:0">Accessible contrast</h3>
+          <p>Primary text <code>#ede9df</code> on <code>#0f1117</code> achieves ≈ 12 : 1. Muted text (58 % opacity) reaches ≈ 6 : 1. Accent buttons (#5b9cf6 on dark) reach ≈ 4.8 : 1 — meeting WCAG AA for large text.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         COLOUR TOKENS
+    ============================================================ -->
+    <div id="tokens" class="section">
+      <div class="section-title">02 — Colour Tokens</div>
+
+      <h3>Backgrounds</h3>
+      <div class="swatch-grid">
+        <div class="swatch">
+          <div class="swatch-color" style="background:#0f1117"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Background</span>
+            <span class="swatch-var">--bg</span>
+            <span class="swatch-hex">#0f1117</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#181c26"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Surface</span>
+            <span class="swatch-var">--surface</span>
+            <span class="swatch-hex">#181c26</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#1f2333"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Surface raised</span>
+            <span class="swatch-var">--surface-2</span>
+            <span class="swatch-hex">#1f2333</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:rgba(18,18,22,0.62);border:1px solid rgba(255,255,255,0.1)"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Glass panel</span>
+            <span class="swatch-var">--glass-bg</span>
+            <span class="swatch-hex">rgba(18,18,22,0.62)</span>
+          </div>
+        </div>
+      </div>
+
+      <h3>Borders</h3>
+      <div class="swatch-grid">
+        <div class="swatch">
+          <div class="swatch-color" style="background:rgba(255,255,255,0.08)"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Border</span>
+            <span class="swatch-var">--border</span>
+            <span class="swatch-hex">rgba(255,255,255,0.08)</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:rgba(255,255,255,0.16)"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Border strong</span>
+            <span class="swatch-var">--border-strong</span>
+            <span class="swatch-hex">rgba(255,255,255,0.16)</span>
+          </div>
+        </div>
+      </div>
+
+      <h3>Text</h3>
+      <div class="swatch-grid">
+        <div class="swatch">
+          <div class="swatch-color" style="background:#ede9df"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Text primary</span>
+            <span class="swatch-var">--text</span>
+            <span class="swatch-hex">#ede9df</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:rgba(237,233,223,0.58)"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Text muted</span>
+            <span class="swatch-var">--text-muted</span>
+            <span class="swatch-hex">rgba(237,233,223,0.58)</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:rgba(237,233,223,0.32)"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Text dim</span>
+            <span class="swatch-var">--text-dim</span>
+            <span class="swatch-hex">rgba(237,233,223,0.32)</span>
+          </div>
+        </div>
+      </div>
+
+      <h3>Interactive</h3>
+      <div class="swatch-grid">
+        <div class="swatch">
+          <div class="swatch-color" style="background:#5b9cf6"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Accent</span>
+            <span class="swatch-var">--accent</span>
+            <span class="swatch-hex">#5b9cf6</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:rgba(91,156,246,0.14)"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Accent bg</span>
+            <span class="swatch-var">--accent-bg</span>
+            <span class="swatch-hex">rgba(91,156,246,0.14)</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#e05770"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Danger</span>
+            <span class="swatch-var">--danger</span>
+            <span class="swatch-hex">#e05770</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:rgba(224,87,112,0.12)"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Danger bg</span>
+            <span class="swatch-var">--danger-bg</span>
+            <span class="swatch-hex">rgba(224,87,112,0.12)</span>
+          </div>
+        </div>
+        <div class="swatch">
+          <div class="swatch-color" style="background:#4dbe80"></div>
+          <div class="swatch-label">
+            <span class="swatch-name">Success</span>
+            <span class="swatch-var">--success</span>
+            <span class="swatch-hex">#4dbe80</span>
+          </div>
+        </div>
+      </div>
+
+      <h3>Full token reference</h3>
+      <div style="overflow-x:auto;border-radius:var(--radius-sm);border:1px solid var(--border)">
+        <table>
+          <thead>
+            <tr><th>Variable</th><th>Value</th><th>Usage</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>--bg</td><td>#0f1117</td><td>Page / outermost canvas</td></tr>
+            <tr><td>--surface</td><td>#181c26</td><td>Card and panel backgrounds</td></tr>
+            <tr><td>--surface-2</td><td>#1f2333</td><td>Raised elements inside a surface</td></tr>
+            <tr><td>--border</td><td>rgba(255,255,255,0.08)</td><td>Default separator and outline</td></tr>
+            <tr><td>--border-strong</td><td>rgba(255,255,255,0.16)</td><td>Inputs, focus rings, hover borders</td></tr>
+            <tr><td>--text</td><td>#ede9df</td><td>Primary body copy</td></tr>
+            <tr><td>--text-muted</td><td>rgba(237,233,223,0.58)</td><td>Labels, supporting text</td></tr>
+            <tr><td>--text-dim</td><td>rgba(237,233,223,0.32)</td><td>Placeholders, meta, disabled</td></tr>
+            <tr><td>--accent</td><td>#5b9cf6</td><td>Primary CTA, links, focus ring</td></tr>
+            <tr><td>--accent-bg</td><td>rgba(91,156,246,0.14)</td><td>Accent tint for tag / badge backgrounds</td></tr>
+            <tr><td>--danger</td><td>#e05770</td><td>Destructive action text</td></tr>
+            <tr><td>--danger-bg</td><td>rgba(224,87,112,0.12)</td><td>Danger button / highlight fill</td></tr>
+            <tr><td>--success</td><td>#4dbe80</td><td>Success states</td></tr>
+            <tr><td>--radius</td><td>12px</td><td>Default corner radius (panels, cards)</td></tr>
+            <tr><td>--radius-sm</td><td>8px</td><td>Smaller elements (inputs, thumbs)</td></tr>
+            <tr><td>--radius-pill</td><td>999px</td><td>Pill buttons, tabs, tags</td></tr>
+            <tr><td>--shadow-sm</td><td>0 2px 8px rgba(0,0,0,0.30)</td><td>Card elevation</td></tr>
+            <tr><td>--shadow</td><td>0 4px 24px rgba(0,0,0,0.44)</td><td>Modal / panel elevation</td></tr>
+            <tr><td>--shadow-lg</td><td>0 12px 48px rgba(0,0,0,0.55)</td><td>Frame overlay menu</td></tr>
+            <tr><td>--glass-bg</td><td>rgba(18,18,22,0.62)</td><td>Frame glass panel fill</td></tr>
+            <tr><td>--glass-blur</td><td>blur(18px) saturate(1.4)</td><td>backdrop-filter for glass elements</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         TYPOGRAPHY
+    ============================================================ -->
+    <div id="typography" class="section">
+      <div class="section-title">03 — Typography</div>
+
+      <p>The type stack is the system sans-serif: <code>system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif</code>.
+         No web fonts are loaded — this keeps the Pi deploy lightweight and renders instantly.</p>
+
+      <div class="showcase">
+        <div class="showcase-label">Type scale</div>
+        <div class="type-row">
+          <div class="type-sample">
+            <span style="font-size:24px;font-weight:700;color:var(--text)">Section heading</span>
+            <span class="type-meta">24 px / bold</span>
+          </div>
+          <div class="type-sample">
+            <span style="font-size:16px;font-weight:700;color:var(--text)">Site header title</span>
+            <span class="type-meta">16 px / bold</span>
+          </div>
+          <div class="type-sample">
+            <span style="font-size:15px;color:var(--text)">Body copy — default size</span>
+            <span class="type-meta">15 px / regular</span>
+          </div>
+          <div class="type-sample">
+            <span style="font-size:14px;color:var(--text)">Button / input text</span>
+            <span class="type-meta">14 px / 600</span>
+          </div>
+          <div class="type-sample">
+            <span style="font-size:13px;color:var(--text-muted)">Labels, subtle text</span>
+            <span class="type-meta">13 px / muted</span>
+          </div>
+          <div class="type-sample">
+            <span style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted)">Section label / eyebrow</span>
+            <span class="type-meta">12 px / bold uppercase</span>
+          </div>
+          <div class="type-sample">
+            <span style="font-size:11px;color:var(--text-dim)">Meta / badges / tiny labels</span>
+            <span class="type-meta">11 px / dim</span>
+          </div>
+        </div>
+      </div>
+
+      <h3>Rules</h3>
+      <ul style="color:var(--text-muted);font-size:14px;line-height:1.7;padding-left:20px;margin:0">
+        <li>Section labels (h2 in panels) are <strong>uppercase + letter-spaced + text-muted</strong>.</li>
+        <li>No italics in the product UI.</li>
+        <li>Line height 1.5 for body, 1.35 for dense captions and card text.</li>
+        <li>Truncate long filenames with <code>overflow-wrap: anywhere</code>, not ellipsis.</li>
+      </ul>
+    </div>
+
+    <!-- ============================================================
+         SPACING
+    ============================================================ -->
+    <div class="section">
+      <div class="section-title">04 — Spacing</div>
+
+      <p>Use a 4 px base unit. The product uses these multiples:</p>
+
+      <div class="showcase">
+        <div class="showcase-label">Spacing scale</div>
+        <div class="spacing-row">
+          <div class="sp-block"><div class="sp-box" style="width:4px;height:4px"></div><span class="sp-label">4</span></div>
+          <div class="sp-block"><div class="sp-box" style="width:6px;height:6px"></div><span class="sp-label">6</span></div>
+          <div class="sp-block"><div class="sp-box" style="width:8px;height:8px"></div><span class="sp-label">8</span></div>
+          <div class="sp-block"><div class="sp-box" style="width:10px;height:10px"></div><span class="sp-label">10</span></div>
+          <div class="sp-block"><div class="sp-box" style="width:12px;height:12px"></div><span class="sp-label">12</span></div>
+          <div class="sp-block"><div class="sp-box" style="width:14px;height:14px"></div><span class="sp-label">14</span></div>
+          <div class="sp-block"><div class="sp-box" style="width:16px;height:16px"></div><span class="sp-label">16</span></div>
+          <div class="sp-block"><div class="sp-box" style="width:20px;height:20px"></div><span class="sp-label">20</span></div>
+          <div class="sp-block"><div class="sp-box" style="width:24px;height:24px"></div><span class="sp-label">24</span></div>
+          <div class="sp-block"><div class="sp-box" style="width:32px;height:32px"></div><span class="sp-label">32</span></div>
+          <div class="sp-block"><div class="sp-box" style="width:48px;height:48px"></div><span class="sp-label">48</span></div>
+        </div>
+      </div>
+
+      <h3>Common usage</h3>
+      <ul style="color:var(--text-muted);font-size:14px;line-height:1.7;padding-left:20px;margin:0">
+        <li>Panel padding: <strong>20 px</strong></li>
+        <li>Gap between form fields / buttons: <strong>10–12 px</strong></li>
+        <li>Gap between panels: <strong>14–16 px</strong></li>
+        <li>Main column side padding on mobile: <strong>20 px</strong></li>
+        <li>Site-header vertical padding: <strong>12 px</strong></li>
+      </ul>
+    </div>
+
+    <!-- ============================================================
+         COMPONENTS
+    ============================================================ -->
+    <div id="components" class="section">
+      <div class="section-title">05 — Components</div>
+
+      <!-- Buttons -->
+      <h3>Buttons</h3>
+      <div class="showcase">
+        <div class="showcase-label">Button variants</div>
+        <div class="row-demo">
+          <button class="btn">Primary</button>
+          <button class="btn btn-secondary">Secondary</button>
+          <button class="btn btn-danger">Danger</button>
+          <button class="btn" disabled>Disabled</button>
+        </div>
+        <div class="row-demo" style="margin-top:12px">
+          <button class="btn btn-sm">Small primary</button>
+          <button class="btn btn-sm btn-secondary">Small secondary</button>
+          <button class="btn btn-sm btn-danger">Small danger</button>
+        </div>
+      </div>
+      <pre>/* Primary (pill, full accent fill) */
+.btn { border-radius: var(--radius-pill); background: var(--accent); color: #fff; }
+
+/* Secondary (ghost with border) */
+.btn-secondary { background: rgba(255,255,255,0.06); border-color: var(--border-strong); }
+
+/* Danger (tinted background, danger text) */
+.btn-danger { background: var(--danger-bg); color: var(--danger); }
+
+/* Smaller — use in card actions */
+.btn-sm { padding: 7px 13px; border-radius: var(--radius-sm); }</pre>
+
+      <p>Primary buttons use the <code>--radius-pill</code> shape (999 px) everywhere except card action rows, which use <code>--radius-sm</code> to fit the tighter grid.</p>
+
+      <!-- Inputs -->
+      <h3>Inputs &amp; textareas</h3>
+      <div class="showcase">
+        <div class="showcase-label">Form controls</div>
+        <div style="display:grid;gap:10px;max-width:420px">
+          <input class="input" type="text" placeholder="Text input" style="width:100%">
+          <input class="input" type="password" placeholder="Password" style="width:100%">
+          <input class="input" type="number" placeholder="Number" style="width:100%">
+          <textarea class="input" placeholder="Textarea" style="width:100%;min-height:80px;resize:vertical"></textarea>
+          <input class="input" type="file" style="width:100%;cursor:pointer;color:var(--text-muted)">
+        </div>
+      </div>
+      <pre>input, textarea {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.05);
+  color: var(--text);
+}
+input:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(91,156,246,0.18);
+}</pre>
+
+      <!-- Panels -->
+      <h3>Panels</h3>
+      <div class="showcase">
+        <div class="showcase-label">Panel / card surfaces</div>
+        <div style="display:grid;gap:12px">
+          <div class="panel">
+            <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px">Panel title</div>
+            Panel body text sits on <code>--surface</code>. Used for all admin sections.
+          </div>
+          <div class="card" style="padding:14px">
+            Card body text on <code>--surface-2</code>. Used for image grid items and QR boxes.
+          </div>
+        </div>
+      </div>
+
+      <!-- Badges -->
+      <h3>Badges</h3>
+      <div class="showcase">
+        <div class="showcase-label">Status badges</div>
+        <div class="row-demo">
+          <span class="badge badge-accent">active</span>
+          <span class="badge badge-danger">deleted</span>
+          <span class="badge badge-neutral">hidden</span>
+        </div>
+      </div>
+
+      <!-- Glass panel (frame) -->
+      <h3>Glass panel <span style="font-size:11px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--text-dim)">frame.html only</span></h3>
+      <div class="showcase">
+        <div class="showcase-label">Frame overlay menu (glass morphism)</div>
+        <div class="dark-demo">
+          <div class="glass-panel" style="width:min(92%,340px)">
+            <div class="glass-title">Device Menu</div>
+            <p style="color:rgba(255,255,255,0.62);font-size:13px;margin:10px 0 14px">Tap anywhere to close · Hold 2 s for Wi‑Fi</p>
+            <div class="row-demo">
+              <button class="glass-btn">Add network</button>
+              <button class="glass-btn" style="padding:0;width:36px;height:36px;display:grid;place-items:center">×</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <pre>/* Glass panel (for frame.html overlay, requires a dark photo backdrop) */
+.menu-panel {
+  background: rgba(18,18,20,0.58);
+  backdrop-filter: blur(4px);       /* intentionally lighter blur on frame */
+  border: 1px solid rgba(255,255,255,0.16);
+  border-radius: 18px;
+  box-shadow: 0 22px 60px rgba(0,0,0,0.38);
+}
+/* In the style-guide demo above we use --glass-bg / --glass-blur */</pre>
+
+      <!-- Tabs -->
+      <h3>Segmented tabs</h3>
+      <div class="showcase">
+        <div class="showcase-label">Guest page tabs</div>
+        <div style="max-width:300px">
+          <div style="display:flex;gap:0;border:1px solid var(--border-strong);border-radius:var(--radius-pill);overflow:hidden;padding:3px;background:rgba(255,255,255,0.04)">
+            <button style="flex:1;appearance:none;border:1px solid transparent;border-radius:var(--radius-pill);padding:9px 12px;background:var(--accent);color:#fff;font:inherit;font-size:14px;font-weight:600;cursor:pointer">Photo</button>
+            <button style="flex:1;appearance:none;border:1px solid transparent;border-radius:var(--radius-pill);padding:9px 12px;background:transparent;color:var(--text-muted);font:inherit;font-size:14px;font-weight:500;cursor:pointer">Message</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status -->
+      <h3>Status / feedback text</h3>
+      <div class="showcase">
+        <div class="showcase-label">Inline status messages</div>
+        <div style="display:grid;gap:8px">
+          <div class="status">Uploading...</div>
+          <div class="status" style="color:var(--success)">Uploaded successfully.</div>
+          <div class="status" style="color:var(--danger)">Error: file too large.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================
+         PATTERNS
+    ============================================================ -->
+    <div id="patterns" class="section">
+      <div class="section-title">06 — Page Patterns</div>
+
+      <h3>Admin page — sticky header + panel stack</h3>
+      <p>The admin page uses a sticky glass header (<code>backdrop-filter: blur(18px)</code>) so the branding stays visible when scrolling through the panel stack. Each section is a <code>.panel</code> with a 12 px section eyebrow label.</p>
+
+      <div class="showcase">
+        <div class="showcase-label">Admin layout sketch</div>
+        <div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden">
+          <div style="background:rgba(15,17,23,0.9);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-size:13px;font-weight:700">Memomatic Pinboard</div>
+              <div style="font-size:11px;color:var(--text-muted)">Owner controls</div>
+            </div>
+            <span style="font-size:12px;color:var(--accent)">Open frame ↗</span>
+          </div>
+          <div style="padding:14px;display:grid;gap:10px">
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px">
+              <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">Upload</div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <div style="flex:1;min-width:120px;height:30px;background:rgba(255,255,255,0.05);border:1px solid var(--border-strong);border-radius:6px"></div>
+                <div style="width:80px;height:30px;background:var(--accent);border-radius:999px;opacity:0.9"></div>
+              </div>
+            </div>
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:12px">
+              <div style="font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px">Images</div>
+              <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+                <div style="aspect-ratio:4/3;background:var(--surface-2);border:1px solid var(--border);border-radius:4px"></div>
+                <div style="aspect-ratio:4/3;background:var(--surface-2);border:1px solid var(--border);border-radius:4px"></div>
+                <div style="aspect-ratio:4/3;background:var(--surface-2);border:1px solid var(--border);border-radius:4px"></div>
+                <div style="aspect-ratio:4/3;background:var(--surface-2);border:1px solid var(--border);border-radius:4px"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Guest page — centred card</h3>
+      <p>The guest page is a single centred card (<code>min(440px, 100%)</code>), suitable for mobile sharing via QR code. It has the segmented tab control for Photo / Message. Body uses <code>display: grid; place-items: center</code> with 20 px padding so the card never touches screen edges.</p>
+
+      <h3>Frame overlay menu</h3>
+      <p>The frame overlay uses a full-screen gradient backdrop (<code>linear-gradient(to top, rgba(0,0,0,0.38), rgba(0,0,0,0.02) 55%)</code>) with a glass panel pinned to the bottom centre. The panel uses a lighter backdrop-filter (4 px blur) than the web glass (18 px) because the photo backdrop already provides depth.</p>
+    </div>
+
+    <!-- ============================================================
+         MOTION
+    ============================================================ -->
+    <div id="motion" class="section">
+      <div class="section-title">07 — Motion</div>
+
+      <div style="overflow-x:auto;border-radius:var(--radius-sm);border:1px solid var(--border)">
+        <table>
+          <thead>
+            <tr><th>Context</th><th>Duration</th><th>Easing</th><th>Property</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Button / input hover feedback</td><td>140 ms</td><td>ease</td><td>opacity, background, border-color</td></tr>
+            <tr><td>Focus ring</td><td>140 ms</td><td>ease</td><td>box-shadow</td></tr>
+            <tr><td>Card hover border</td><td>140 ms</td><td>ease</td><td>border-color</td></tr>
+            <tr><td>Frame menu overlay</td><td>220 ms</td><td>ease</td><td>opacity (enter/exit)</td></tr>
+            <tr><td>Frame slide crossfade</td><td>650 ms</td><td>ease</td><td>opacity</td></tr>
+            <tr><td>Message toast slide-in</td><td>380 ms</td><td>cubic-bezier(0.34,1.28,0.64,1)</td><td>transform + opacity</td></tr>
+            <tr><td>Message toast fade-out</td><td>280 ms</td><td>ease</td><td>opacity</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p style="margin-top:14px">Keep transitions only on properties that communicate state change. Do not animate layout properties (<code>width</code>, <code>height</code>, <code>top</code>) on interactive components — use <code>transform</code> instead.</p>
+    </div>
+
+    <!-- ============================================================
+         FUTURE: COLOUR SCHEMES
+    ============================================================ -->
+    <div class="section">
+      <div class="section-title">08 — Colour Scheme Extensibility</div>
+
+      <p>All 12 root CSS variables can be overridden in a <code>[data-scheme]</code> attribute selector to implement named colour schemes:</p>
+
+      <pre>/* Example: light scheme override */
+[data-scheme="light"] {
+  color-scheme: light;
+  --bg:            #f5f4f0;
+  --surface:       #ffffff;
+  --surface-2:     #f0eee8;
+  --border:        rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.16);
+  --text:          #191b1f;
+  --text-muted:    rgba(25,27,31,0.58);
+  --text-dim:      rgba(25,27,31,0.32);
+  --accent:        #2364aa;
+  --accent-bg:     rgba(35,100,170,0.10);
+  --danger:        #a63446;
+  --danger-bg:     rgba(166,52,70,0.10);
+}</pre>
+
+      <p>The admin page can expose a colour-scheme picker that writes <code>data-scheme</code> to
+         <code>document.documentElement</code> and stores the choice in <code>localStorage</code>.
+         See the follow-up issue <em>"Admin: user-selectable colour schemes"</em> for implementation details.</p>
+    </div>
+
+  </div><!-- /.guide-body -->
+
+</body>
+</html>

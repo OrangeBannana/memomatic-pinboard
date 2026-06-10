@@ -5,14 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Send to Memomatic</title>
   <style>
+    /* ---- Design tokens (matches admin.html / frame.html palette) ---- */
     :root {
-      color-scheme: light;
-      --ink: #191b1f;
-      --muted: #63676f;
-      --line: #d9dce2;
-      --surface: #f7f7f4;
-      --panel: #ffffff;
-      --accent: #2364aa;
+      color-scheme: dark;
+
+      --bg:            #0f1117;
+      --surface:       #181c26;
+      --surface-2:     #1f2333;
+      --border:        rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+
+      --text:          #ede9df;
+      --text-muted:    rgba(237, 233, 223, 0.58);
+      --text-dim:      rgba(237, 233, 223, 0.32);
+
+      --accent:        #5b9cf6;
+      --accent-bg:     rgba(91, 156, 246, 0.14);
+      --danger:        #e05770;
+
+      --radius:        12px;
+      --radius-sm:     8px;
+      --radius-pill:   999px;
+
+      --shadow-sm:     0 2px 8px rgba(0, 0, 0, 0.30);
+      --shadow:        0 4px 24px rgba(0, 0, 0, 0.44);
     }
 
     * { box-sizing: border-box; }
@@ -22,64 +38,74 @@
       min-height: 100vh;
       display: grid;
       place-items: center;
-      background: var(--surface);
-      color: var(--ink);
+      padding: 20px;
+      background: var(--bg);
+      background-image: radial-gradient(ellipse 80% 50% at 50% -8%, rgba(91, 156, 246, 0.07), transparent);
+      color: var(--text);
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
     }
 
     main {
-      width: min(440px, calc(100% - 28px));
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 18px;
+      width: min(440px, 100%);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: var(--shadow);
     }
 
     h1 {
-      margin: 0 0 16px;
-      font-size: 26px;
+      margin: 0 0 20px;
+      font-size: 22px;
+      font-weight: 700;
       letter-spacing: 0;
+      color: var(--text);
     }
 
+    /* ---- Tabs ---- */
     .tabs {
       display: flex;
       gap: 0;
-      border: 1px solid var(--line);
-      border-radius: 6px;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-pill);
       overflow: hidden;
-      margin-bottom: 18px;
+      margin-bottom: 20px;
+      padding: 3px;
+      background: rgba(255, 255, 255, 0.04);
     }
 
     .tab {
       flex: 1;
       appearance: none;
-      border: none;
-      border-radius: 0;
-      padding: 10px 12px;
-      background: #fff;
-      color: var(--muted);
+      border: 1px solid transparent;
+      border-radius: var(--radius-pill);
+      padding: 9px 12px;
+      background: transparent;
+      color: var(--text-muted);
       font: inherit;
+      font-size: 14px;
       font-weight: 500;
       cursor: pointer;
-    }
-
-    .tab:not(:last-child) {
-      border-right: 1px solid var(--line);
+      transition: background 140ms, color 140ms;
     }
 
     .tab.active {
       background: var(--accent);
       color: #fff;
-      font-weight: 650;
+      font-weight: 600;
+      border-color: transparent;
     }
 
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
 
     p {
-      margin: 0 0 14px;
-      color: var(--muted);
-      line-height: 1.4;
+      margin: 0 0 16px;
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 1.5;
     }
 
     form {
@@ -87,53 +113,81 @@
       gap: 12px;
     }
 
+    /* ---- Inputs ---- */
     input[type="file"] {
       width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 10px;
-      background: #fff;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-muted);
       font: inherit;
+      font-size: 14px;
+      cursor: pointer;
+      transition: border-color 140ms;
+    }
+
+    input[type="file"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(91, 156, 246, 0.18);
     }
 
     textarea {
       width: 100%;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 10px;
-      background: #fff;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
       font: inherit;
+      font-size: 14px;
       resize: vertical;
       min-height: 96px;
+      transition: border-color 140ms;
     }
+
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(91, 156, 246, 0.18);
+    }
+
+    textarea::placeholder { color: var(--text-dim); }
 
     .char-count {
       text-align: right;
       font-size: 12px;
-      color: var(--muted);
+      color: var(--text-dim);
       margin-top: -6px;
     }
 
-    .char-count.over { color: #c0392b; }
+    .char-count.over { color: var(--danger); }
 
+    /* ---- Button ---- */
     button {
       appearance: none;
       border: 1px solid transparent;
-      border-radius: 6px;
-      padding: 11px 12px;
+      border-radius: var(--radius-pill);
+      padding: 11px 18px;
       background: var(--accent);
       color: #fff;
       font: inherit;
-      font-weight: 650;
+      font-size: 14px;
+      font-weight: 600;
       cursor: pointer;
+      transition: opacity 140ms;
     }
 
-    button:disabled { opacity: 0.52; cursor: wait; }
+    button:hover   { opacity: 0.86; }
+    button:disabled { opacity: 0.38; cursor: wait; }
 
+    /* ---- Status ---- */
     #photo-status, #msg-status {
       min-height: 22px;
-      margin-top: 12px;
-      color: var(--muted);
+      margin-top: 4px;
+      color: var(--text-muted);
+      font-size: 13px;
     }
   </style>
 </head>

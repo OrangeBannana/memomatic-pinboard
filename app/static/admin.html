@@ -5,61 +5,128 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Memomatic Admin</title>
   <style>
+    /* ---- Design tokens ---- */
     :root {
-      color-scheme: light;
-      --ink: #191b1f;
-      --muted: #63676f;
-      --line: #d9dce2;
-      --surface: #f7f7f4;
-      --panel: #ffffff;
-      --accent: #2364aa;
-      --danger: #a63446;
+      color-scheme: dark;
+
+      /* Backgrounds */
+      --bg:            #0f1117;
+      --surface:       #181c26;
+      --surface-2:     #1f2333;
+
+      /* Borders */
+      --border:        rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.16);
+
+      /* Text */
+      --text:          #ede9df;
+      --text-muted:    rgba(237, 233, 223, 0.58);
+      --text-dim:      rgba(237, 233, 223, 0.32);
+
+      /* Interactive */
+      --accent:        #5b9cf6;
+      --accent-bg:     rgba(91, 156, 246, 0.14);
+      --danger:        #e05770;
+      --danger-bg:     rgba(224, 87, 112, 0.12);
+
+      /* Geometry */
+      --radius:        12px;
+      --radius-sm:     8px;
+      --radius-pill:   999px;
+
+      /* Elevation */
+      --shadow-sm:     0 2px 8px rgba(0, 0, 0, 0.30);
+      --shadow:        0 4px 24px rgba(0, 0, 0, 0.44);
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      background: var(--surface);
-      color: var(--ink);
+      min-height: 100vh;
+      background: var(--bg);
+      background-image: radial-gradient(ellipse 80% 50% at 50% -8%, rgba(91, 156, 246, 0.07), transparent);
+      color: var(--text);
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
     }
 
-    main {
-      width: min(980px, calc(100% - 28px));
-      margin: 0 auto;
-      padding: 22px 0 36px;
-    }
-
-    header, .row {
+    /* ---- Site header (sticky glass bar) ---- */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 14px;
+      padding: 12px 20px;
+      background: rgba(15, 17, 23, 0.80);
+      backdrop-filter: blur(18px) saturate(1.4);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .site-header-brand { line-height: 1.2; }
+    .site-header-brand strong { font-size: 15px; font-weight: 700; }
+    .site-header-brand span {
+      display: block;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .site-header a {
+      color: var(--accent);
+      font-size: 14px;
+      font-weight: 500;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    /* ---- Layout ---- */
+    main {
+      width: min(960px, 100%);
+      margin: 0 auto;
+      padding: 24px 20px 48px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
       flex-wrap: wrap;
     }
 
-    header { align-items: end; margin-bottom: 18px; }
-
-    h1, h2 { margin: 0; letter-spacing: 0; }
-    h1 { font-size: 28px; }
-    h2 { font-size: 18px; }
-
-    .subtle, label, .meta {
-      color: var(--muted);
-      font-size: 14px;
+    h2 {
+      margin: 0 0 14px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
     }
 
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 16px;
-    }
+    .row h2 { margin: 0; }
 
     .hidden { display: none !important; }
 
+    /* ---- Text helpers ---- */
+    .subtle { color: var(--text-muted); font-size: 13px; }
+    label   { color: var(--text-muted); font-size: 13px; }
+    .meta   { color: var(--text-dim);   font-size: 13px; }
+
+    /* ---- Panels ---- */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 14px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* ---- Forms / controls ---- */
     form, .controls {
       display: flex;
       flex-wrap: wrap;
@@ -67,157 +134,220 @@
       gap: 10px;
     }
 
-    input[type="file"], input[type="password"], input[type="number"], input[type="text"] {
-      flex: 1 1 220px;
+    /* ---- Inputs ---- */
+    input[type="file"],
+    input[type="password"],
+    input[type="number"],
+    input[type="text"],
+    select {
+      flex: 1 1 200px;
       min-width: 0;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 10px;
+      appearance: none;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
       font: inherit;
-      background: #fff;
+      font-size: 14px;
+      transition: border-color 140ms, box-shadow 140ms;
     }
 
-    input[type="checkbox"] { width: 18px; height: 18px; }
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(91, 156, 246, 0.18);
+    }
 
-    button {
-      appearance: none;
-      border: 1px solid transparent;
-      border-radius: 6px;
-      padding: 10px 12px;
-      background: var(--accent);
-      color: #fff;
-      font: inherit;
-      font-weight: 650;
+    input[type="file"] {
+      cursor: pointer;
+      color: var(--text-muted);
+    }
+
+    input[type="checkbox"] {
+      width: 17px;
+      height: 17px;
+      accent-color: var(--accent);
       cursor: pointer;
     }
 
-    button.secondary {
-      background: #ffffff;
-      color: var(--accent);
-      border-color: var(--accent);
+    select option {
+      background: var(--surface-2);
+      color: var(--text);
     }
+
+    /* ---- Buttons ---- */
+    button {
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: var(--radius-pill);
+      padding: 10px 18px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 140ms, background 140ms;
+    }
+
+    button:hover   { opacity: 0.86; }
+    button:disabled { opacity: 0.38; cursor: wait; }
+
+    button.secondary {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text);
+      border-color: var(--border-strong);
+    }
+    button.secondary:hover { background: rgba(255, 255, 255, 0.10); opacity: 1; }
 
     button.danger {
-      background: #ffffff;
+      background: var(--danger-bg);
       color: var(--danger);
-      border-color: var(--danger);
+      border-color: rgba(224, 87, 112, 0.32);
     }
+    button.danger:hover { background: rgba(224, 87, 112, 0.22); opacity: 1; }
 
-    button:disabled { opacity: 0.52; cursor: wait; }
-
+    /* ---- Status message ---- */
     #status {
       min-height: 20px;
       margin-top: 10px;
-      color: var(--muted);
-      font-size: 14px;
+      color: var(--text-muted);
+      font-size: 13px;
     }
 
+    /* ---- Settings grid ---- */
     .settings-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
       gap: 12px;
-      margin-top: 12px;
+      margin-top: 6px;
     }
 
     .setting {
       display: grid;
       gap: 6px;
+      font-size: 13px;
+      color: var(--text-muted);
     }
 
+    /* ---- QR codes ---- */
     .qr-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 14px;
-      margin-top: 12px;
+      margin-top: 14px;
     }
 
     .qr-box {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 12px;
-      background: #fff;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .qr-box strong {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
     }
 
     .qr-box img {
-      width: 148px;
-      height: 148px;
+      width: 136px;
+      height: 136px;
       display: block;
       background: #fff;
-      border: 1px solid var(--line);
-      margin-bottom: 8px;
+      border-radius: 6px;
     }
 
     .copy-text {
       width: 100%;
       font-size: 12px;
+      flex: 1 1 auto;
     }
 
+    /* ---- Image grid ---- */
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
       gap: 12px;
     }
 
     .card {
       overflow: hidden;
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      transition: border-color 140ms;
     }
 
-    .card.inactive { opacity: 0.62; }
+    .card:hover { border-color: var(--border-strong); }
+    .card.inactive { opacity: 0.50; }
 
     .thumb {
       width: 100%;
       aspect-ratio: 4 / 3;
       object-fit: cover;
       display: block;
-      background: #111;
+      background: #08080e;
     }
 
     .card-body { padding: 10px; }
 
     .name {
-      min-height: 36px;
-      color: var(--muted);
-      font-size: 13px;
+      min-height: 34px;
+      color: var(--text-muted);
+      font-size: 12px;
       line-height: 1.35;
       overflow-wrap: anywhere;
     }
 
     .badge {
       display: inline-block;
-      margin-top: 4px;
-      color: var(--muted);
-      font-size: 12px;
+      margin-top: 3px;
+      color: var(--text-dim);
+      font-size: 11px;
     }
 
     .actions {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-top: 10px;
+      gap: 6px;
+      margin-top: 8px;
     }
 
+    .actions button {
+      padding: 7px 8px;
+      font-size: 12px;
+      border-radius: var(--radius-sm);
+    }
+
+    /* ---- Empty state ---- */
     .empty {
-      padding: 24px;
-      border: 1px dashed var(--line);
-      border-radius: 8px;
-      color: var(--muted);
+      padding: 32px 24px;
+      border: 1px dashed var(--border-strong);
+      border-radius: var(--radius-sm);
+      color: var(--text-dim);
       text-align: center;
+      font-size: 14px;
     }
   </style>
 </head>
 <body>
+  <header class="site-header">
+    <div class="site-header-brand">
+      <strong>Memomatic Pinboard</strong>
+      <span>Owner controls</span>
+    </div>
+    <a href="/frame">Open frame →</a>
+  </header>
   <main>
-    <header>
-      <div>
-        <h1>Memomatic Pinboard</h1>
-        <div class="subtle">Owner controls</div>
-      </div>
-      <a class="subtle" href="/frame">Open frame</a>
-    </header>
-
     <section id="login-panel" class="panel">
       <h2>Owner Login</h2>
       <form id="login-form">
@@ -276,7 +406,7 @@
         <div style="margin-top: 12px; display: grid; gap: 12px;">
           <label class="setting">
             Available networks
-            <select id="wifi-network" style="min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 10px; font: inherit; background: #fff;"></select>
+            <select id="wifi-network"></select>
           </label>
           <div class="controls">
             <input id="wifi-ssid" type="text" placeholder="Or type SSID manually">

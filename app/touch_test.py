@@ -189,13 +189,23 @@ class FB:
             self._mm.write(struct.pack("<H", color) * (self.w * self.h))
 
     def grid(self, step=40, color=GRID):
-        """Faint reference grid so touch position is easy to judge visually."""
+        """Faint reference grid — drawn with full-row writes for speed."""
+        if not self._mm:
+            return
+        px = struct.pack("<H", color)
+        # horizontal lines: write one full row at a time
+        row = bytearray(self.w * 2)
+        for y in range(0, self.h, step):
+            self._mm.seek(y * self.w * 2)
+            self._mm.write(px * self.w)
+        # vertical lines: mark pixels in a full-framebuffer bytearray then flush
+        buf = bytearray(self._mm[0:self.w * self.h * 2])
         for x in range(0, self.w, step):
             for y in range(self.h):
-                self._put(x, y, color)
-        for y in range(0, self.h, step):
-            for x in range(self.w):
-                self._put(x, y, color)
+                off = (y * self.w + x) * 2
+                buf[off:off+2] = px
+        self._mm.seek(0)
+        self._mm.write(buf)
 
     def crosshair(self, x, y, color=RED, arm=16):
         for dx in range(-arm, arm + 1):
@@ -533,9 +543,14 @@ def run_gpio(fb, duration):
                 print(f"  [{now:.4f}] {GRN}TOUCH DOWN{RST}  screen=({sx:3d},{sy:3d})"
                       f"  [{diag}]", flush=True)
                 if fb and fb.ready:
+                    # spi_touch_read outputs X11 coordinates; fbcp runs rot180
+                    # so fb0[x,y] appears at TFT[W-1-x, H-1-y].
+                    # Flip here so the dot lands where the finger actually is.
+                    fx = fb.w - 1 - sx
+                    fy = fb.h - 1 - sy
                     fb.fill(DKGRAY)
                     fb.grid()
-                    fb.crosshair(sx, sy, RED)
+                    fb.crosshair(fx, fy, RED)
             else:
                 spi_err += 1
                 print(f"  [{now:.4f}] {GRN}TOUCH DOWN{RST}  "

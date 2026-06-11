@@ -569,6 +569,13 @@
               <option value="memes">Memes only</option>
             </select>
           </label>
+          <label class="field">
+            <span>Order</span>
+            <select id="slideshow-order">
+              <option value="sequential">Sequential</option>
+              <option value="shuffle">Shuffle</option>
+            </select>
+          </label>
         </div>
 
         <hr>
@@ -693,6 +700,7 @@
     const clockCorner = document.getElementById('clock-corner');
     const clockSize = document.getElementById('clock-size');
     const slideshowMode = document.getElementById('slideshow-mode');
+    const slideshowOrder = document.getElementById('slideshow-order');
     const uploadCategory = document.getElementById('upload-category');
     const saveSettings = document.getElementById('save-settings');
     const saveNetwork = document.getElementById('save-network');
@@ -747,6 +755,7 @@
         clockSize.value = settings.clock.size;
       }
       if (settings.slideshow_mode) slideshowMode.value = settings.slideshow_mode;
+      if (settings.slideshow_order) slideshowOrder.value = settings.slideshow_order;
     }
 
     function setNetworkStatus(message) {
@@ -1122,6 +1131,7 @@
           clock_corner: clockCorner.value,
           clock_size: clockSize.value,
           slideshow_mode: slideshowMode.value,
+          slideshow_order: slideshowOrder.value,
         })
       });
       applySettings(data.settings);

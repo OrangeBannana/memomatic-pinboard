@@ -141,10 +141,21 @@
     input[type="file"] { cursor: pointer; }
 
     select {
+      /* Solid dark fill so the closed control and the native option popup
+         both stay legible (translucent bg composites to near-white on the
+         open list in many browsers → light text becomes unreadable). */
+      background-color: #1b1b24;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath fill='%23ede9e1' fill-opacity='.45' d='M0 0l6 8 6-8z'/%3E%3C/svg%3E");
       background-repeat: no-repeat;
       background-position: right 14px center;
       padding-right: 36px;
+    }
+
+    /* Explicit solid colours on options so the dropdown list is always
+       readable regardless of browser/OS default popup styling. */
+    select option {
+      background-color: #1b1b24;
+      color: var(--text);
     }
 
     /* ── Buttons ── */

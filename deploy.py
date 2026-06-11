@@ -43,6 +43,8 @@ def sha256_bytes(data):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
     try:
         import paramiko
     except ImportError:

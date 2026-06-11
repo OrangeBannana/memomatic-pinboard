@@ -6,6 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 All issues, pull requests, and work should target **OrangeBannana/memomatic-pinboard** (this fork). Do not open PRs or issues against the upstream AtomicTrxn/memomatic-pinboard.
 
+## Working with GitHub (read this before reaching for `gh`)
+
+**Use the GitHub MCP server tools, not the `gh`/`hub` CLI or raw REST calls.** Every GitHub action this repo needs — reading/creating/updating issues, opening and merging PRs, commenting, checking CI, browsing files — is available as an MCP tool named `mcp__github__*` (e.g. `mcp__github__issue_write`, `mcp__github__create_pull_request`, `mcp__github__merge_pull_request`, `mcp__github__add_issue_comment`, `mcp__github__list_issues`). These are backed by the **Claude GitHub App**, which is already authenticated for this repo — no token juggling, no `gh auth login`, no `GITHUB_TOKEN` env var.
+
+Past agents have wasted significant time fighting the `gh` CLI (missing auth, wrong scopes, interactive prompts that hang, 403s). Don't. The CLI is **not** the path here.
+
+How to use the MCP tools:
+- They may be **deferred** (not loaded at session start). If a `mcp__github__*` tool isn't directly callable, run `ToolSearch` with `select:mcp__github__issue_write,mcp__github__create_pull_request` (comma-separated exact names) or a keyword like `github pull request` to load the schemas, then call them normally.
+- All of them take `owner: "OrangeBannana"` and `repo: "memomatic-pinboard"`.
+- Typical flow for a change: branch locally → commit (author `Claude <noreply@anthropic.com>`) → `git push -u origin <branch>` → `mcp__github__create_pull_request` (base `main`) → `mcp__github__merge_pull_request` (`merge_method: "squash"`) → `git checkout main && git pull`.
+- `git` over HTTPS for push/pull/clone works fine and is authenticated; only the GitHub **API** actions (PRs, issues, comments) should go through the MCP tools rather than `gh`.
+
+If the MCP GitHub server is genuinely unavailable in a given session, say so and use plain `git` for what you can — but try `ToolSearch` first before concluding it's missing.
+
 ## What this is
 
 Memomatic Pinboard is a single-file FastAPI app that turns a Raspberry Pi Zero 2 W with a 3.5" GPIO TFT into a digital picture frame. The Pi runs the backend plus a fullscreen Chromium kiosk pointed at `/frame`. Phones/laptops on the same Wi-Fi hit `/admin` (owner) or `/guest/<token>` to upload images.

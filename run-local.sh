@@ -21,10 +21,16 @@ PINBOARD_HOME="${PINBOARD_HOME:-/tmp/pinboard-local}"
 PINBOARD_OWNER_TOKEN="${PINBOARD_OWNER_TOKEN:-dev}"
 
 # ── dependency check ──────────────────────────────────────────────────────────
-# PIL is the import name for the Pillow package; fastapi/uvicorn are their own names.
 if ! python3 -c "import fastapi, uvicorn, PIL" 2>/dev/null; then
-  echo "Installing Python dependencies (fastapi, uvicorn, Pillow, ...)..."
-  python3 -m pip install -r "$REPO_DIR/requirements.txt"
+  echo "Python dependencies missing. Install them with:"
+  echo ""
+  echo "  On Ubuntu/WSL/Pi:"
+  echo "    sudo apt install python3-fastapi python3-uvicorn python3-multipart python3-pil python3-qrcode"
+  echo ""
+  echo "  On macOS or a venv:"
+  echo "    pip install -r requirements.txt"
+  echo ""
+  exit 1
 fi
 
 # ── ensure data directories exist (app.py mounts them at import time) ─────────

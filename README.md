@@ -9,6 +9,9 @@ The app runs a FastAPI backend and a fullscreen Chromium kiosk. Images can be up
 - Owner upload/admin page at `http://memomatic.local:8080/admin` (or `http://<pi-ip>:8080/admin`)
 - Owner-token protection for admin/API actions
 - Guest upload link with enable/disable and regeneration
+- Bluetooth uploads: pair a phone from the frame's touch menu and share photos
+  (or `.txt` messages) straight to the frame — no Wi-Fi needed (not iOS;
+  see [docs/bluetooth-guest-uploads.md](docs/bluetooth-guest-uploads.md))
 - QR codes for admin and guest URLs
 - JPEG, PNG, and WebP uploads
 - Local filesystem image storage with SQLite metadata

@@ -379,6 +379,13 @@
             <button id="mode-option" class="menu-button" type="button">Mode: All</button>
             <button id="clock-option" class="menu-button" type="button">Clock settings</button>
             <button id="wifi-option" class="menu-button" type="button">Add Wi-Fi network</button>
+            <button id="bt-option" class="menu-button" type="button">Bluetooth pairing</button>
+          </div>
+          <!-- bluetooth panel (reuses clock-panel show/hide styling) -->
+          <div id="bt-panel" class="clock-panel">
+            <div id="bt-status" class="network-status">Checking Bluetooth…</div>
+            <button id="bt-pair" class="menu-primary" type="button">Start pairing (3 min)</button>
+            <button id="bt-back" class="menu-button" type="button">Done</button>
           </div>
           <!-- clock settings panel -->
           <div id="clock-panel" class="clock-panel">
@@ -565,6 +572,7 @@
     const menuOverlay = document.getElementById('menu-overlay');
     const menuMain    = document.getElementById('menu-main');
     const clockPanel  = document.getElementById('clock-panel');
+    const btPanel     = document.getElementById('bt-panel');
     const networkPanel = document.getElementById('network-panel');
     const networkSsid  = document.getElementById('network-ssid');
     const networkPass  = document.getElementById('network-password');
@@ -579,6 +587,7 @@
       menuOverlay.setAttribute('aria-hidden', 'true');
       networkPanel.classList.remove('open');
       clockPanel.classList.remove('open');
+      btPanel.classList.remove('open');
       menuMain.style.display = '';
       networkStatus.textContent = '';
       hideKeyboard();
@@ -671,6 +680,63 @@
       b.addEventListener('click', () => saveClock({ clock_corner: b.dataset.corner })));
     clockPanel.querySelectorAll('[data-size]').forEach(b =>
       b.addEventListener('click', () => saveClock({ clock_size: b.dataset.size })));
+
+    // ── Bluetooth panel ────────────────────────────────────────────────────
+    const btStatus = document.getElementById('bt-status');
+    const btPair   = document.getElementById('bt-pair');
+
+    async function refreshBtStatus() {
+      try {
+        const d = await fetch('/api/bluetooth/status', { cache: 'no-store' }).then(r => r.json());
+        const b = d.bluetooth || {};
+        const name = b.alias || 'Memomatic';
+        if (!b.available) {
+          btStatus.textContent = 'No Bluetooth adapter found on this device.';
+          btPair.disabled = true;
+          return;
+        }
+        btPair.disabled = false;
+        if (b.discoverable) {
+          btStatus.textContent = `Pairing is ON — on your phone, pair with "${name}", then share a photo to it via Bluetooth.`;
+        } else if (!b.enabled) {
+          btStatus.textContent = `Bluetooth uploads are turned off in the admin page. Device name: "${name}".`;
+        } else {
+          btStatus.textContent = `Ready. Paired phones can share photos via Bluetooth to "${name}".`;
+        }
+      } catch (_) {
+        btStatus.textContent = 'Bluetooth status unavailable.';
+      }
+    }
+
+    function openBtPanel() {
+      menuMain.style.display = 'none';
+      btPanel.classList.add('open');
+      btStatus.textContent = 'Checking Bluetooth…';
+      refreshBtStatus();
+    }
+
+    document.getElementById('bt-option').addEventListener('click', openBtPanel);
+    document.getElementById('bt-back').addEventListener('click', () => {
+      btPanel.classList.remove('open');
+      menuMain.style.display = '';
+    });
+    btPair.addEventListener('click', async () => {
+      btStatus.textContent = 'Turning pairing on…';
+      btPair.disabled = true;
+      try {
+        const r = await fetch('/api/bluetooth/pairing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: true }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.detail || 'Unable to enable pairing.');
+        await refreshBtStatus();
+      } catch (e) {
+        btStatus.textContent = e.message;
+      }
+      btPair.disabled = false;
+    });
 
     document.getElementById('menu-close').addEventListener('click', hideMenu);
     document.getElementById('wifi-option').addEventListener('click', openNetworkPanel);

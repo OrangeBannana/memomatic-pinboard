@@ -543,6 +543,22 @@
       </section>
 
       <section class="panel">
+        <div class="panel-header">
+          <h2>Bluetooth</h2>
+          <button id="bt-pairing-button" class="secondary" type="button">Start pairing (3 min)</button>
+        </div>
+        <p class="muted" style="margin-bottom: 12px;">Guests can pair a phone with the frame (pairing mode is also on the frame's touch menu) and share photos to it via Bluetooth — no Wi-Fi or link needed. Shared <code>.txt</code> files become frame messages. Uploads honour the approval setting in Links.</p>
+        <div class="inline-row">
+          <label class="check-row">
+            <input id="bt-enabled" type="checkbox">
+            Accept Bluetooth uploads
+          </label>
+          <button id="save-bt" type="button">Save</button>
+        </div>
+        <div id="bt-admin-status" style="min-height:18px; margin-top:10px; font-size:13px; color:var(--text-muted);"></div>
+      </section>
+
+      <section class="panel">
         <h2 style="margin-bottom: 14px;">Display Settings</h2>
         <div class="settings-grid">
           <label class="field">
@@ -704,6 +720,10 @@
     const uploadCategory = document.getElementById('upload-category');
     const saveSettings = document.getElementById('save-settings');
     const saveNetwork = document.getElementById('save-network');
+    const btEnabled = document.getElementById('bt-enabled');
+    const saveBt = document.getElementById('save-bt');
+    const btPairingButton = document.getElementById('bt-pairing-button');
+    const btAdminStatus = document.getElementById('bt-admin-status');
 
     let ownerToken = localStorage.getItem('pinboardOwnerToken') || '';
 
@@ -741,6 +761,7 @@
     function applySettings(settings) {
       guestEnabled.checked = settings.guest_enabled;
       guestReview.checked = settings.guest_review_required;
+      btEnabled.checked = !!settings.bluetooth_enabled;
       adminUrl.value = settings.admin_url;
       guestUrl.value = settings.guest_url;
       adminQr.src = qrUrl(settings.admin_url);
@@ -1055,6 +1076,7 @@
       await loadWifiNetworks();
       await loadColorSchemes();
       loadDeviceAddress();
+      loadBtStatus();
       showAdmin(true);
     }
 
@@ -1110,6 +1132,52 @@
       });
       applySettings(data.settings);
       setStatus('Guest setting saved.');
+    });
+
+    function setBtStatus(message) {
+      btAdminStatus.textContent = message || '';
+    }
+
+    async function loadBtStatus() {
+      try {
+        const d = await fetch('/api/bluetooth/status', { cache: 'no-store' }).then(r => r.json());
+        const b = d.bluetooth || {};
+        if (!b.available) {
+          setBtStatus('No Bluetooth adapter detected on the device.');
+          btPairingButton.disabled = true;
+          return;
+        }
+        btPairingButton.disabled = false;
+        setBtStatus(b.discoverable
+          ? `Pairing mode is ON — pair with "${b.alias || 'Memomatic'}" from a phone's Bluetooth settings.`
+          : `Adapter ready ("${b.alias || 'Memomatic'}"). Pairing mode is off.`);
+      } catch (_) {
+        setBtStatus('Bluetooth status unavailable.');
+      }
+    }
+
+    saveBt.addEventListener('click', async () => {
+      try {
+        const data = await api('/api/settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bluetooth_enabled: btEnabled.checked }),
+        });
+        applySettings(data.settings);
+        setBtStatus(btEnabled.checked ? 'Bluetooth uploads enabled.' : 'Bluetooth uploads disabled.');
+      } catch (e) { setBtStatus(e.message); }
+    });
+
+    btPairingButton.addEventListener('click', async () => {
+      setBtStatus('Turning pairing mode on…');
+      try {
+        await api('/api/bluetooth/pairing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: true }),
+        });
+        await loadBtStatus();
+      } catch (e) { setBtStatus(e.message); }
     });
 
     regenerateGuest.addEventListener('click', async () => {

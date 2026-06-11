@@ -69,7 +69,9 @@ Wi-Fi API endpoints (`/api/network/wifi`, `/api/network/connect`, `/api/network/
 | `dev wifi connect` | returns success message |
 | `connection add` | returns success message |
 
-These files must stay executable (`chmod +x local/bin/nmcli local/bin/sudo`).
+`local/bin/bluetoothctl` is the same idea for the Bluetooth endpoints (`/api/bluetooth/status`, `/api/bluetooth/pairing`): it returns a canned `show` controller block and persists discoverable on/off in `/tmp/pinboard-btctl-stub` so pairing-mode toggles are observable across calls.
+
+These files must stay executable (`chmod +x local/bin/nmcli local/bin/sudo local/bin/bluetoothctl`).
 
 ### Validation
 
@@ -188,6 +190,8 @@ Smaller fixes:
 10. **Frame opened menu + WiFi panel on boot (#23)** — a phantom boot-time `pointerdown` (no matching `pointerup`) showed the menu, then the 2 s long-press timer fired and opened the WiFi panel. Fixed with a 4 s startup grace period (`STARTUP_GRACE_MS` in `frame.html`) that ignores all pointer/click gestures right after load. **This is a client-side guard only; it does not fix the underlying touch behaviour (see #25). Verify on real hardware once touch works again.**
 
 ## Open investigations
+
+- **Bluetooth guest uploads (#1, branch `issue-1-bluetooth-guest-uploads` — awaiting hardware test).** Guests pair with the frame (Just-Works agent, pairing mode from the frame menu / admin) and share photos via OBEX push; files land in `~/pinboard/bluetooth-inbox` and a watcher in `app.py` ingests them through the guest pipeline (`source='bluetooth'`, push-next, honours `guest_review_required`); `.txt` files become messages. New: `app/bt_agent.py` + `pinboard-bluetooth.service`, `/api/bluetooth/status` + `/api/bluetooth/pairing`, `bluetooth_enabled` setting, `local/bin/bluetoothctl` dev stub. `install.sh` now REMOVES `dtoverlay=disable-bt` and unmasks `bluetooth.service`/`hciuart.service` (deliberately undoes part of #4; `disable-bt` is also suspect #2 in #25 — re-test touch when testing this branch). Design, local-test record, hardware test plan, and expected-failure table: [docs/bluetooth-guest-uploads.md](docs/bluetooth-guest-uploads.md). iOS cannot send (no OPP support) — documented decision not to build a Web Bluetooth page (BLE can't carry photos practically and iOS Safari lacks Web Bluetooth anyway).
 
 - **Touchscreen regression (#25, OPEN — not yet fixed).** On-device touch reverted to an earlier broken state. **Prime suspect: the boot-time changes in #4.** Two concrete leads for the next agent:
   1. **`gpu_mem=16`** — the fbcp-ili9341 "safe build" drives the TFT via GPU DMA. Starving the GPU to 16 MB may change fbcp's inter-frame DMA timing, which `spi_touch_read.c` busy-waits on to read the ADS7846 in the ~2 ms gap. If that window shifts, reads corrupt or return `err`. Try reverting to `gpu_mem=64` first.

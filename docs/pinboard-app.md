@@ -110,6 +110,10 @@ GET    /api/network/wifi                   owner        scan Wi-Fi networks (nmc
 POST   /api/network/connect                local/owner  connect to a Wi-Fi network
 POST   /api/network/save                   owner        save a network profile for later
 GET    /api/network/ip                     public       device IP, hostname, mDNS name
+
+Bluetooth
+GET    /api/bluetooth/status               public       adapter availability/pairing state
+POST   /api/bluetooth/pairing              local/owner  turn pairing (discoverable) mode on/off
 ```
 
 ## Messages
@@ -127,6 +131,18 @@ which categories the slideshow shows; it can be changed from the admin Display
 Settings panel or the frame touch menu. `slideshow_order` (`sequential` / `shuffle`)
 controls advance order. Guest uploads can optionally require owner approval
 (`guest_review_required`) before entering the slideshow.
+
+## Bluetooth uploads
+
+Guests can also send images without joining the Wi-Fi: enable pairing mode from
+the frame's touch menu (or `/admin` → Bluetooth), pair a phone with the
+**Memomatic** device, and share a photo via Bluetooth. Files arrive over OBEX
+Object Push into `~/pinboard/bluetooth-inbox`, are ingested through the guest
+pipeline (push-next, approval queue if enabled), and `.txt` files become frame
+messages. Requires the `bluetooth_enabled` setting (off by default) and the
+`pinboard-bluetooth.service` agent. iOS does not support Bluetooth file push —
+iPhone guests use the guest link instead. Details:
+[bluetooth-guest-uploads.md](bluetooth-guest-uploads.md).
 
 ## Clock
 

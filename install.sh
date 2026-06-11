@@ -27,7 +27,11 @@ apt install -y \
   xdotool \
   avahi-daemon \
   libnss-mdns \
-  build-essential
+  build-essential \
+  bluez \
+  bluez-obexd \
+  python3-dbus \
+  python3-gi
 
 install -d -o "$APP_USER" -g "$APP_USER" "$PINBOARD_HOME/app"
 install -d -o "$APP_USER" -g "$APP_USER" "$PINBOARD_HOME/app/static"
@@ -35,6 +39,9 @@ install -d -o "$APP_USER" -g "$APP_USER" "$PINBOARD_HOME/data"
 install -d -o "$APP_USER" -g "$APP_USER" "$PINBOARD_HOME/images/originals"
 install -d -o "$APP_USER" -g "$APP_USER" "$PINBOARD_HOME/images/display"
 install -d -o "$APP_USER" -g "$APP_USER" "$PINBOARD_HOME/chromium-profile"
+# OBEX push inbox: obexd (root) writes received files here; the app (memomatic)
+# ingests and deletes them, which needs write permission on the directory.
+install -d -m 0775 -o "$APP_USER" -g "$APP_USER" "$PINBOARD_HOME/bluetooth-inbox"
 
 install -m 0644 -o "$APP_USER" -g "$APP_USER" app/app.py "$PINBOARD_HOME/app/app.py"
 install -m 0755 -o "$APP_USER" -g "$APP_USER" app/kiosk.sh "$PINBOARD_HOME/app/kiosk.sh"
@@ -46,6 +53,7 @@ install -m 0755 -o root -g root app/touch_test.py "$PINBOARD_HOME/app/touch_test
 install -m 0755 -o root -g root app/raw_touch.py "$PINBOARD_HOME/app/raw_touch.py"
 install -m 0755 -o root -g root app/show_splash.py "$PINBOARD_HOME/app/show_splash.py"
 install -m 0644 -o root -g root app/boot_splash.png "$PINBOARD_HOME/app/boot_splash.png"
+install -m 0755 -o root -g root app/bt_agent.py "$PINBOARD_HOME/app/bt_agent.py"
 install -m 0644 -o "$APP_USER" -g "$APP_USER" app/static/admin.html "$PINBOARD_HOME/app/static/admin.html"
 install -m 0644 -o "$APP_USER" -g "$APP_USER" app/static/frame.html "$PINBOARD_HOME/app/static/frame.html"
 install -m 0644 -o "$APP_USER" -g "$APP_USER" app/static/guest.html "$PINBOARD_HOME/app/static/guest.html"
@@ -55,6 +63,7 @@ sed "s/^Environment=PINBOARD_OWNER_TOKEN=.*/Environment=PINBOARD_OWNER_TOKEN=$OW
 install -m 0644 systemd/pinboard-kiosk.service /etc/systemd/system/pinboard-kiosk.service
 install -m 0644 systemd/pinboard-touch.service /etc/systemd/system/pinboard-touch.service
 install -m 0644 systemd/pinboard-splash.service /etc/systemd/system/pinboard-splash.service
+install -m 0644 systemd/pinboard-bluetooth.service /etc/systemd/system/pinboard-bluetooth.service
 
 install -d /etc/X11/xorg.conf.d
 cat >/etc/X11/Xwrapper.config <<'EOF'
@@ -97,8 +106,11 @@ for BOOTCFG in /boot/firmware/config.txt /boot/config.txt; do
   # Disable rainbow splash (the multicolour square shown before the Linux kernel)
   grep -q "^disable_splash" "$BOOTCFG" || echo "disable_splash=1" >> "$BOOTCFG"
 
-  # Disable on-board Bluetooth — frees up UART and eliminates hciuart.service delay
-  grep -q "^dtoverlay=disable-bt" "$BOOTCFG" || echo "dtoverlay=disable-bt" >> "$BOOTCFG"
+  # Bluetooth must stay ON for the guest pairing/upload feature (#1). The
+  # boot-time work (#4) wrote dtoverlay=disable-bt; remove it. This re-adds a
+  # few seconds of boot for hciuart — accepted trade-off for the feature.
+  # (disable-bt was also suspect #2 in the touch regression, see #25.)
+  sed -i '/^dtoverlay=disable-bt$/d' "$BOOTCFG"
 
   # Reduce GPU memory to minimum (16 MB) — Pi Zero 2 W has no HDMI display
   if ! grep -q "^gpu_mem" "$BOOTCFG"; then
@@ -106,8 +118,11 @@ for BOOTCFG in /boot/firmware/config.txt /boot/config.txt; do
   fi
 done
 
-# Mask the Bluetooth modem service so hciuart.service doesn't add a boot delay
-systemctl mask bluetooth.service hciuart.service 2>/dev/null || true
+# The #4 boot-time work masked these; the Bluetooth guest feature needs them.
+systemctl unmask bluetooth.service hciuart.service 2>/dev/null || true
+systemctl enable bluetooth.service 2>/dev/null || true
+# Let the app user run bluetoothctl (pairing-mode endpoint) without sudo.
+usermod -aG bluetooth "$APP_USER" 2>/dev/null || true
 
 systemctl daemon-reload
 systemctl enable avahi-daemon.service
@@ -116,9 +131,11 @@ systemctl enable pinboard-splash.service
 systemctl enable pinboard-app.service
 systemctl enable pinboard-kiosk.service
 systemctl enable pinboard-touch.service
+systemctl enable pinboard-bluetooth.service
 systemctl restart pinboard-app.service
 systemctl restart pinboard-kiosk.service
 systemctl restart pinboard-touch.service
+systemctl restart pinboard-bluetooth.service
 
 echo "Memomatic Pinboard installed."
 echo "Admin: http://memomatic.local:8080/admin"

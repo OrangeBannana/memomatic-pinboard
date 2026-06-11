@@ -609,7 +609,10 @@ async def upload_image(
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Upload was empty.")
-    return {"image": save_upload(file, content, category=category)}
+    # Pillow processing is CPU-heavy on the Pi Zero; keep it off the event
+    # loop so the frame's slideshow polls don't stall during uploads.
+    image = await run_in_threadpool(save_upload, file, content, "wifi-owner", category)
+    return {"image": image}
 
 
 @app.delete("/api/images/{image_id}")
@@ -721,7 +724,7 @@ async def guest_upload(
         if not guest_allowed(conn, token):
             raise HTTPException(status_code=404, detail="Guest upload link is disabled.")
         enforce_guest_rate_limit(conn, token, remote_addr, kind="image")
-    image = save_upload(file, content, source="guest-link", category=category)
+    image = await run_in_threadpool(save_upload, file, content, "guest-link", category)
     with db() as conn:
         record_guest_submission(conn, token, remote_addr, kind="image")
         conn.execute("UPDATE slideshow_state SET push_next_image_id = ? WHERE id = 1", (image["id"],))

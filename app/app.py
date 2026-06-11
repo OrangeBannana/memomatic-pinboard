@@ -33,6 +33,8 @@ ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 GUEST_UPLOAD_LIMIT = 5
 GUEST_UPLOAD_WINDOW_SECONDS = 10 * 60
+CLOCK_CORNERS = {"top-left", "top-right", "bottom-left", "bottom-right"}
+CLOCK_SIZES = {"small", "medium", "large"}
 
 BUILTIN_SCHEMES: list[dict] = [
     {
@@ -185,6 +187,9 @@ def init_db() -> None:
             "message_display_seconds": "8",
             "color_schemes": "[]",
             "active_color_scheme": "Dark Violet",
+            "clock_enabled": "0",
+            "clock_corner": "bottom-right",
+            "clock_size": "medium",
         }
         for key, value in defaults.items():
             conn.execute(
@@ -288,6 +293,14 @@ def get_active_scheme(conn: sqlite3.Connection) -> dict:
     return BUILTIN_SCHEMES[0]
 
 
+def clock_payload(conn: sqlite3.Connection) -> dict[str, Any]:
+    return {
+        "enabled": get_setting(conn, "clock_enabled", "0") == "1",
+        "corner": get_setting(conn, "clock_corner", "bottom-right"),
+        "size": get_setting(conn, "clock_size", "medium"),
+    }
+
+
 def settings_payload(conn: sqlite3.Connection, request: Request) -> dict[str, Any]:
     guest_token = get_setting(conn, "guest_token", "")
     base_url = str(request.base_url).rstrip("/")
@@ -302,6 +315,7 @@ def settings_payload(conn: sqlite3.Connection, request: Request) -> dict[str, An
         "admin_url": admin_url,
         "guest_url": guest_url,
         "message_display_seconds": int(get_setting(conn, "message_display_seconds", "8")),
+        "clock": clock_payload(conn),
     }
 
 
@@ -633,6 +647,23 @@ def get_settings(
         return {"settings": settings_payload(conn, request)}
 
 
+def apply_clock_settings(conn: sqlite3.Connection, body: dict[str, Any]) -> None:
+    """Validate and persist any clock_* keys present in body. Shared by the
+    owner settings PATCH and the localhost-permitted frame clock endpoint."""
+    if "clock_enabled" in body:
+        set_setting(conn, "clock_enabled", "1" if bool(body["clock_enabled"]) else "0")
+    if "clock_corner" in body:
+        corner = str(body["clock_corner"])
+        if corner not in CLOCK_CORNERS:
+            raise HTTPException(status_code=400, detail="Invalid clock corner.")
+        set_setting(conn, "clock_corner", corner)
+    if "clock_size" in body:
+        size = str(body["clock_size"])
+        if size not in CLOCK_SIZES:
+            raise HTTPException(status_code=400, detail="Invalid clock size.")
+        set_setting(conn, "clock_size", size)
+
+
 @app.patch("/api/settings")
 async def update_settings(
     request: Request,
@@ -655,6 +686,7 @@ async def update_settings(
         if "message_display_seconds" in body:
             value = max(3, min(30, int(body["message_display_seconds"])))
             set_setting(conn, "message_display_seconds", str(value))
+        apply_clock_settings(conn, body)
         return {"settings": settings_payload(conn, request)}
 
 
@@ -779,8 +811,26 @@ def slideshow_current() -> dict[str, Any]:
             },
             "message": message,
             "message_display_seconds": message_display_seconds,
+            "clock": clock_payload(conn),
             "server_time": now(),
         }
+
+
+@app.post("/api/frame/clock")
+async def frame_clock(
+    request: Request,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    # Allow either a valid owner token or a request from the device itself
+    # (the kiosk frame menu, which has no owner token). Mirrors the dual-auth
+    # used by POST /api/network/connect.
+    remote_addr = request.client.host if request.client else ""
+    if remote_addr not in {"127.0.0.1", "::1"}:
+        require_owner(x_pinboard_owner_token)
+    body = await request.json()
+    with db() as conn:
+        apply_clock_settings(conn, body)
+        return {"ok": True, "clock": clock_payload(conn)}
 
 
 @app.post("/api/network/save")

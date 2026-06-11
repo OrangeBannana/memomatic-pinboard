@@ -74,6 +74,33 @@
     #empty h1 { margin: 0 0 6px; font-size: 20px; font-weight: 700; }
     #empty p  { margin: 0; font-size: 13px; color: #cfc9b8; }
 
+    /* ── Clock overlay ── */
+    #clock {
+      position: fixed;
+      z-index: 2;
+      display: none;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      line-height: 1;
+      color: #ffffff;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.75), 0 0 14px rgba(0,0,0,0.5);
+      padding: 8px 14px;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.24);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      pointer-events: none;
+      letter-spacing: 0.01em;
+    }
+    #clock.visible { display: block; }
+    #clock.size-small  { font-size: 22px; }
+    #clock.size-medium { font-size: 36px; }
+    #clock.size-large  { font-size: 56px; }
+    #clock.corner-top-left     { top: 16px;    left: 16px;  }
+    #clock.corner-top-right    { top: 16px;    right: 16px; }
+    #clock.corner-bottom-left  { bottom: 16px; left: 16px;  }
+    #clock.corner-bottom-right { bottom: 16px; right: 16px; }
+
     /* ── Menu overlay ── */
     .menu-overlay {
       position: fixed;
@@ -282,6 +309,45 @@
     .kbd-fn   { flex: 0 0 48px; background: rgba(255,255,255,0.09); font-size: 11px; }
     .kbd-wide { flex: 0 0 44px; background: rgba(255,255,255,0.09); font-size: 11px; }
     .kbd-space { flex: 4; background: rgba(255,255,255,0.14); font-size: 11px; }
+
+    /* ── Clock menu sub-panel ── */
+    .clock-panel {
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .clock-panel.open { display: flex; }
+    .clock-section-label {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: -2px;
+    }
+    .seg-row {
+      display: grid;
+      gap: 6px;
+    }
+    .seg-row.cols-2 { grid-template-columns: repeat(2, 1fr); }
+    .seg-row.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .seg-btn {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      min-height: 48px;
+      padding: 8px 6px;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .seg-btn.active {
+      background: rgba(255,255,255,0.22);
+      border-color: rgba(255,255,255,0.5);
+    }
   </style>
 </head>
 <body>
@@ -295,6 +361,7 @@
       </div>
     </section>
     <div id="message-toast" class="message-toast" aria-live="assertive"></div>
+    <div id="clock" class="corner-bottom-right size-medium" aria-hidden="true"></div>
 
     <div id="menu-overlay" class="menu-overlay" aria-hidden="true">
       <div class="menu-panel" role="dialog" aria-label="Device menu">
@@ -306,7 +373,28 @@
         <div class="menu-body">
           <!-- main options -->
           <div id="menu-main">
+            <button id="clock-option" class="menu-button" type="button">Clock settings</button>
             <button id="wifi-option" class="menu-button" type="button">Add Wi-Fi network</button>
+          </div>
+          <!-- clock settings panel -->
+          <div id="clock-panel" class="clock-panel">
+            <div class="seg-row cols-2">
+              <button class="seg-btn" id="clock-toggle" type="button">Clock: Off</button>
+              <button class="menu-button" id="clock-back" type="button">Done</button>
+            </div>
+            <div class="clock-section-label">Position</div>
+            <div class="seg-row cols-2">
+              <button class="seg-btn" data-corner="top-left" type="button">Top left</button>
+              <button class="seg-btn" data-corner="top-right" type="button">Top right</button>
+              <button class="seg-btn" data-corner="bottom-left" type="button">Bottom left</button>
+              <button class="seg-btn" data-corner="bottom-right" type="button">Bottom right</button>
+            </div>
+            <div class="clock-section-label">Size</div>
+            <div class="seg-row cols-3">
+              <button class="seg-btn" data-size="small" type="button">Small</button>
+              <button class="seg-btn" data-size="medium" type="button">Medium</button>
+              <button class="seg-btn" data-size="large" type="button">Large</button>
+            </div>
           </div>
           <!-- network form -->
           <form id="network-panel" class="network-panel">
@@ -380,6 +468,7 @@
           document.documentElement.style.setProperty('--backdrop-blur', `${data.display.backdrop_blur_px}px`);
           document.documentElement.style.setProperty('--backdrop-brightness', String(data.display.backdrop_brightness));
         }
+        if (data.clock) applyClockSettings(data.clock);
         const newPollMs = Math.max(1000, Math.min(5000, Math.floor((data.slide_seconds || 15) * 1000 / 4)));
         if (newPollMs !== pollMs) {
           pollMs = newPollMs;
@@ -412,9 +501,37 @@
       } catch (e) { console.error(e); }
     }
 
+    // ── Clock overlay ───────────────────────────────────────────────────────
+    const clockEl = document.getElementById('clock');
+    // Local mirror of server-side clock settings; updated whenever a poll or a
+    // frame-menu change arrives. The frame menu writes via POST /api/frame/clock
+    // (localhost dual-auth) so changes survive reboot and sync to the admin page.
+    let clockState = { enabled: false, corner: 'bottom-right', size: 'medium' };
+
+    function renderClockTime() {
+      let h = new Date().getHours();
+      const m = new Date().getMinutes();
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      h = h % 12; if (h === 0) h = 12;
+      clockEl.textContent = `${h}:${String(m).padStart(2, '0')} ${ampm}`;
+    }
+
+    function applyClockSettings(clock) {
+      clockState = {
+        enabled: !!clock.enabled,
+        corner: clock.corner || 'bottom-right',
+        size: clock.size || 'medium',
+      };
+      clockEl.className = `corner-${clockState.corner} size-${clockState.size}` +
+        (clockState.enabled ? ' visible' : '');
+      if (clockState.enabled) renderClockTime();
+    }
+    setInterval(() => { if (clockState.enabled) renderClockTime(); }, 1000);
+
     // ── Menu ──────────────────────────────────────────────────────────────
     const menuOverlay = document.getElementById('menu-overlay');
     const menuMain    = document.getElementById('menu-main');
+    const clockPanel  = document.getElementById('clock-panel');
     const networkPanel = document.getElementById('network-panel');
     const networkSsid  = document.getElementById('network-ssid');
     const networkPass  = document.getElementById('network-password');
@@ -428,6 +545,7 @@
       menuOverlay.classList.remove('visible');
       menuOverlay.setAttribute('aria-hidden', 'true');
       networkPanel.classList.remove('open');
+      clockPanel.classList.remove('open');
       menuMain.style.display = '';
       networkStatus.textContent = '';
       hideKeyboard();
@@ -476,6 +594,50 @@
       }
       connecting = false;
     }
+
+    // ── Clock settings panel ───────────────────────────────────────────────
+    const clockToggle = document.getElementById('clock-toggle');
+
+    function refreshClockPanel() {
+      clockToggle.textContent = `Clock: ${clockState.enabled ? 'On' : 'Off'}`;
+      clockToggle.classList.toggle('active', clockState.enabled);
+      clockPanel.querySelectorAll('[data-corner]').forEach(b =>
+        b.classList.toggle('active', b.dataset.corner === clockState.corner));
+      clockPanel.querySelectorAll('[data-size]').forEach(b =>
+        b.classList.toggle('active', b.dataset.size === clockState.size));
+    }
+
+    function openClockPanel() {
+      menuMain.style.display = 'none';
+      clockPanel.classList.add('open');
+      refreshClockPanel();
+    }
+
+    async function saveClock(patch) {
+      // Optimistically apply locally so the change is instant, then persist.
+      applyClockSettings({ ...clockState, ...patch });
+      refreshClockPanel();
+      try {
+        const r = await fetch('/api/frame/clock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patch),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (r.ok && data.clock) { applyClockSettings(data.clock); refreshClockPanel(); }
+      } catch (_) {}
+    }
+
+    document.getElementById('clock-option').addEventListener('click', openClockPanel);
+    document.getElementById('clock-back').addEventListener('click', () => {
+      clockPanel.classList.remove('open');
+      menuMain.style.display = '';
+    });
+    clockToggle.addEventListener('click', () => saveClock({ clock_enabled: !clockState.enabled }));
+    clockPanel.querySelectorAll('[data-corner]').forEach(b =>
+      b.addEventListener('click', () => saveClock({ clock_corner: b.dataset.corner })));
+    clockPanel.querySelectorAll('[data-size]').forEach(b =>
+      b.addEventListener('click', () => saveClock({ clock_size: b.dataset.size })));
 
     document.getElementById('menu-close').addEventListener('click', hideMenu);
     document.getElementById('wifi-option').addEventListener('click', openNetworkPanel);

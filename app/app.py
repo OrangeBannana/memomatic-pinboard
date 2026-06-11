@@ -166,10 +166,16 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 token TEXT NOT NULL,
                 remote_addr TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT 'image',
                 uploaded_at REAL NOT NULL
             )
             """
         )
+        # Migration: add kind to pre-existing DBs so images and messages get
+        # separate rate-limit counters.
+        guest_columns = {r["name"] for r in conn.execute("PRAGMA table_info(guest_uploads)")}
+        if "kind" not in guest_columns:
+            conn.execute("ALTER TABLE guest_uploads ADD COLUMN kind TEXT NOT NULL DEFAULT 'image'")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS messages (
@@ -531,22 +537,32 @@ def guest_allowed(conn: sqlite3.Connection, token: str) -> bool:
     )
 
 
-def enforce_guest_rate_limit(conn: sqlite3.Connection, token: str, remote_addr: str) -> None:
+def enforce_guest_rate_limit(
+    conn: sqlite3.Connection, token: str, remote_addr: str, kind: str = "image"
+) -> None:
+    """Raise 429 if the guest is over the limit for this kind of submission.
+    Does NOT consume a slot — call record_guest_submission() after the
+    submission actually succeeds, so validation failures stay free."""
     cutoff = now() - GUEST_UPLOAD_WINDOW_SECONDS
     conn.execute("DELETE FROM guest_uploads WHERE uploaded_at < ?", (cutoff,))
     count = conn.execute(
         """
         SELECT COUNT(*) AS count
         FROM guest_uploads
-        WHERE token = ? AND remote_addr = ? AND uploaded_at >= ?
+        WHERE token = ? AND remote_addr = ? AND kind = ? AND uploaded_at >= ?
         """,
-        (token, remote_addr, cutoff),
+        (token, remote_addr, kind, cutoff),
     ).fetchone()["count"]
     if count >= GUEST_UPLOAD_LIMIT:
         raise HTTPException(status_code=429, detail="Too many guest uploads. Try again later.")
+
+
+def record_guest_submission(
+    conn: sqlite3.Connection, token: str, remote_addr: str, kind: str = "image"
+) -> None:
     conn.execute(
-        "INSERT INTO guest_uploads (token, remote_addr, uploaded_at) VALUES (?, ?, ?)",
-        (token, remote_addr, now()),
+        "INSERT INTO guest_uploads (token, remote_addr, kind, uploaded_at) VALUES (?, ?, ?, ?)",
+        (token, remote_addr, kind, now()),
     )
 
 
@@ -704,9 +720,10 @@ async def guest_upload(
     with db() as conn:
         if not guest_allowed(conn, token):
             raise HTTPException(status_code=404, detail="Guest upload link is disabled.")
-        enforce_guest_rate_limit(conn, token, remote_addr)
+        enforce_guest_rate_limit(conn, token, remote_addr, kind="image")
     image = save_upload(file, content, source="guest-link", category=category)
     with db() as conn:
+        record_guest_submission(conn, token, remote_addr, kind="image")
         conn.execute("UPDATE slideshow_state SET push_next_image_id = ? WHERE id = 1", (image["id"],))
     return {"ok": True, "image": image}
 
@@ -723,11 +740,12 @@ async def guest_message(token: str, request: Request) -> dict[str, Any]:
     with db() as conn:
         if not guest_allowed(conn, token):
             raise HTTPException(status_code=404, detail="Guest link is disabled.")
-        enforce_guest_rate_limit(conn, token, remote_addr)
+        enforce_guest_rate_limit(conn, token, remote_addr, kind="message")
         conn.execute(
             "INSERT INTO messages (content, created_at) VALUES (?, ?)",
             (content, now()),
         )
+        record_guest_submission(conn, token, remote_addr, kind="message")
     return {"ok": True}
 
 

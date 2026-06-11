@@ -1,0 +1,17 @@
+[Unit]
+Description=Memomatic Bluetooth pairing agent + OBEX push inbox
+# bluetoothd must be up: the agent registers with it and obexd registers the
+# Object Push profile through it.
+After=bluetooth.service
+Wants=bluetooth.service
+
+[Service]
+Type=simple
+User=root
+Environment=PINBOARD_BT_INBOX=/home/memomatic/pinboard/bluetooth-inbox
+ExecStart=/usr/bin/python3 /home/memomatic/pinboard/app/bt_agent.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,40 @@
+#!/bin/sh
+# Stub bluetoothctl for local/WSL testing (same pattern as the nmcli stub).
+# Handles the one-shot bluetoothctl commands used by app/app.py so the
+# Bluetooth API endpoints return sensible fake data on machines without a
+# Bluetooth adapter. Discoverable state persists in a temp file so that
+# "Start pairing" toggles are visible in subsequent status calls.
+
+STATE_DIR="${BTCTL_STATE_DIR:-/tmp/pinboard-btctl-stub}"
+mkdir -p "$STATE_DIR"
+
+case "$1" in
+  show)
+    disc="$(cat "$STATE_DIR/discoverable" 2>/dev/null || echo no)"
+    printf 'Controller AA:BB:CC:DD:EE:FF (public)\n'
+    printf '\tName: memomatic\n'
+    printf '\tAlias: Memomatic\n'
+    printf '\tPowered: yes\n'
+    printf '\tDiscoverable: %s\n' "$disc"
+    printf '\tDiscoverableTimeout: 0x000000b4 (180)\n'
+    printf '\tPairable: yes\n'
+    exit 0
+    ;;
+  power|pairable)
+    echo "Changing $1 $2 succeeded"
+    exit 0
+    ;;
+  discoverable)
+    if [ "$2" = "on" ]; then echo yes > "$STATE_DIR/discoverable"; else echo no > "$STATE_DIR/discoverable"; fi
+    echo "Changing discoverable $2 succeeded"
+    exit 0
+    ;;
+  discoverable-timeout)
+    echo "Changing discoverable-timeout $2 succeeded"
+    exit 0
+    ;;
+  *)
+    echo "bluetoothctl stub: unhandled command: $*" >&2
+    exit 1
+    ;;
+esac

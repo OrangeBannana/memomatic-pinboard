@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import random
 import socket
@@ -9,7 +11,7 @@ import secrets
 import sqlite3
 import time
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from io import BytesIO
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -35,6 +37,14 @@ ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 GUEST_UPLOAD_LIMIT = 5
 GUEST_UPLOAD_WINDOW_SECONDS = 10 * 60
+# Bluetooth OBEX inbox: obexd (run by pinboard-bluetooth.service) drops files
+# pushed from paired phones here; a background watcher ingests them. See
+# docs/bluetooth-guest-uploads.md.
+BT_INBOX_DIR = Path(os.environ.get("PINBOARD_BT_INBOX", str(BASE_DIR / "bluetooth-inbox")))
+BT_INBOX_POLL_SECONDS = 2.0
+BT_INBOX_MIN_AGE_SECONDS = 1.5  # skip files this fresh — obexd may still be writing
+BT_TEXT_EXTENSIONS = {".txt"}
+BT_PAIRING_TIMEOUT_SECONDS = 180
 CLOCK_CORNERS = {"top-left", "top-right", "bottom-left", "bottom-right"}
 CLOCK_SIZES = {"small", "medium", "large"}
 IMAGE_CATEGORIES = {"image", "meme"}
@@ -102,6 +112,9 @@ BUILTIN_SCHEMES: list[dict] = [
 BUILTIN_SCHEME_NAMES: set[str] = {s["name"] for s in BUILTIN_SCHEMES}
 
 
+log = logging.getLogger("pinboard")
+
+
 def now() -> float:
     return time.time()
 
@@ -110,12 +123,17 @@ def ensure_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     ORIGINALS_DIR.mkdir(parents=True, exist_ok=True)
     DISPLAY_DIR.mkdir(parents=True, exist_ok=True)
+    BT_INBOX_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     init_db()
+    watcher = asyncio.create_task(bt_inbox_watcher())
     yield
+    watcher.cancel()
+    with suppress(asyncio.CancelledError):
+        await watcher
 
 
 # StaticFiles requires the directory to exist when mounted, so create the data
@@ -211,6 +229,7 @@ def init_db() -> None:
             "backdrop_brightness": "0.68",
             "guest_enabled": "0",
             "guest_review_required": "0",
+            "bluetooth_enabled": "0",
             "guest_token": secrets.token_urlsafe(16),
             "message_display_seconds": "8",
             "color_schemes": "[]",
@@ -367,6 +386,7 @@ def settings_payload(conn: sqlite3.Connection, request: Request) -> dict[str, An
         "backdrop_brightness": float(get_setting(conn, "backdrop_brightness", "0.68")),
         "guest_enabled": get_setting(conn, "guest_enabled", "0") == "1",
         "guest_review_required": get_setting(conn, "guest_review_required", "0") == "1",
+        "bluetooth_enabled": get_setting(conn, "bluetooth_enabled", "0") == "1",
         "guest_token": guest_token,
         "admin_url": admin_url,
         "guest_url": guest_url,
@@ -494,11 +514,23 @@ def save_upload(
     category: str = "image",
     status: str = "active",
 ) -> dict[str, Any]:
-    category = normalize_category(category)
-    original_suffix = Path(file.filename or "").suffix.lower()
-    if original_suffix not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="Only JPEG, PNG, and WebP images are supported.")
     if file.content_type and file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="Only JPEG, PNG, and WebP images are supported.")
+    return ingest_image_bytes(file.filename or "", content, source, category, status)
+
+
+def ingest_image_bytes(
+    original_filename: str,
+    content: bytes,
+    source: str = "wifi-owner",
+    category: str = "image",
+    status: str = "active",
+) -> dict[str, Any]:
+    """Core of the upload pipeline, shared by HTTP uploads (save_upload) and
+    the Bluetooth OBEX inbox, which has a plain file rather than an UploadFile."""
+    category = normalize_category(category)
+    original_suffix = Path(original_filename or "").suffix.lower()
+    if original_suffix not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Only JPEG, PNG, and WebP images are supported.")
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=400, detail="Image is too large.")
@@ -533,7 +565,7 @@ def save_upload(
                 (original_name, stored_name, display_name, source, status, category, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (file.filename or original_name, original_name, display_name, source, status, category, now()),
+            (original_filename or original_name, original_name, display_name, source, status, category, now()),
         )
         row = conn.execute("SELECT * FROM images WHERE id = ?", (cursor.lastrowid,)).fetchone()
         return row_to_image(row)
@@ -587,6 +619,126 @@ def record_guest_submission(
         "INSERT INTO guest_uploads (token, remote_addr, kind, uploaded_at) VALUES (?, ?, ?, ?)",
         (token, remote_addr, kind, now()),
     )
+
+
+# ── Bluetooth (issue #1) ──────────────────────────────────────────────────────
+# Guests pair with the device over classic Bluetooth (pinboard-bluetooth.service
+# runs a Just-Works pairing agent + obexd) and share images via OBEX Object
+# Push. obexd writes received files into BT_INBOX_DIR; bt_inbox_watcher()
+# ingests them through the same pipeline as guest uploads. Pairing mode and
+# adapter status are driven through one-shot `bluetoothctl` commands (the app
+# user is in the `bluetooth` group — no sudo; local/bin has a dev stub).
+
+
+def run_btctl(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["bluetoothctl", *args], capture_output=True, text=True, timeout=15)
+
+
+def parse_btctl_show(output: str) -> dict[str, str]:
+    info: dict[str, str] = {}
+    for raw_line in output.splitlines():
+        key, sep, value = raw_line.strip().partition(":")
+        if sep:
+            info[key.strip()] = value.strip()
+    return info
+
+
+def bluetooth_status_payload(conn: sqlite3.Connection) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "enabled": get_setting(conn, "bluetooth_enabled", "0") == "1",
+        "available": False,
+        "powered": False,
+        "discoverable": False,
+        "pairable": False,
+        "alias": "",
+    }
+    try:
+        result = run_btctl(["show"])
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return payload
+    if result.returncode != 0 or "Controller" not in result.stdout:
+        return payload
+    info = parse_btctl_show(result.stdout)
+    payload.update(
+        {
+            "available": True,
+            "powered": info.get("Powered") == "yes",
+            "discoverable": info.get("Discoverable") == "yes",
+            "pairable": info.get("Pairable") == "yes",
+            "alias": info.get("Alias", ""),
+        }
+    )
+    return payload
+
+
+def process_bt_inbox_file(path: Path) -> None:
+    """Ingest one file dropped into the OBEX inbox by a paired phone. Images
+    enter the guest pipeline (push-next, honouring guest_review_required);
+    .txt files become frame messages; anything else is discarded. The file is
+    always removed afterwards so the inbox stays empty."""
+    suffix = path.suffix.lower()
+    try:
+        with db() as conn:
+            bt_enabled = get_setting(conn, "bluetooth_enabled", "0") == "1"
+            review_required = get_setting(conn, "guest_review_required", "0") == "1"
+        if not bt_enabled:
+            log.warning("bluetooth inbox: discarding %s (Bluetooth uploads disabled in admin)", path.name)
+            return
+        if suffix in ALLOWED_EXTENSIONS:
+            content = path.read_bytes()
+            status = "pending" if review_required else "active"
+            image = ingest_image_bytes(path.name, content, source="bluetooth", status=status)
+            if status == "active":
+                with db() as conn:
+                    conn.execute(
+                        "UPDATE slideshow_state SET push_next_image_id = ? WHERE id = 1",
+                        (image["id"],),
+                    )
+            log.info("bluetooth inbox: ingested %s as image %s (%s)", path.name, image["id"], status)
+        elif suffix in BT_TEXT_EXTENSIONS:
+            content_text = path.read_text(encoding="utf-8", errors="replace").strip()
+            if content_text:
+                with db() as conn:
+                    conn.execute(
+                        "INSERT INTO messages (content, created_at) VALUES (?, ?)",
+                        (content_text[:200], now()),
+                    )
+                log.info("bluetooth inbox: accepted message from %s", path.name)
+            else:
+                log.warning("bluetooth inbox: discarding empty text file %s", path.name)
+        else:
+            log.warning("bluetooth inbox: discarding unsupported file %s", path.name)
+    except HTTPException as exc:
+        log.warning("bluetooth inbox: rejected %s: %s", path.name, exc.detail)
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def process_bt_inbox() -> None:
+    if not BT_INBOX_DIR.is_dir():
+        return
+    cutoff = now() - BT_INBOX_MIN_AGE_SECONDS
+    for path in sorted(BT_INBOX_DIR.iterdir()):
+        if not path.is_file():
+            continue
+        try:
+            if path.stat().st_mtime > cutoff:
+                continue  # obexd is likely still writing this one
+        except OSError:
+            continue
+        process_bt_inbox_file(path)
+
+
+async def bt_inbox_watcher() -> None:
+    """Background task (started in lifespan) that polls the OBEX inbox.
+    Polling keeps this dependency-free; the scan of an (almost always empty)
+    directory every couple of seconds is negligible even on the Pi Zero."""
+    while True:
+        try:
+            await asyncio.to_thread(process_bt_inbox)
+        except Exception:
+            log.exception("bluetooth inbox: watcher iteration failed")
+        await asyncio.sleep(BT_INBOX_POLL_SECONDS)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -896,6 +1048,8 @@ async def update_settings(
             set_setting(conn, "guest_enabled", "1" if bool(body["guest_enabled"]) else "0")
         if "guest_review_required" in body:
             set_setting(conn, "guest_review_required", "1" if bool(body["guest_review_required"]) else "0")
+        if "bluetooth_enabled" in body:
+            set_setting(conn, "bluetooth_enabled", "1" if bool(body["bluetooth_enabled"]) else "0")
         if "message_display_seconds" in body:
             value = max(3, min(30, parse_int(body["message_display_seconds"], "message_display_seconds")))
             set_setting(conn, "message_display_seconds", str(value))
@@ -1148,6 +1302,54 @@ async def connect_network(
 
     message = result.stdout.strip() or f"Connected to {ssid}."
     return {"ok": True, "message": message}
+
+
+@app.get("/api/bluetooth/status")
+def bluetooth_status() -> dict[str, Any]:
+    # Public like /api/network/ip: the tokenless frame menu needs it, and it
+    # exposes nothing sensitive (adapter name and on/off states).
+    with db() as conn:
+        return {"bluetooth": bluetooth_status_payload(conn)}
+
+
+@app.post("/api/bluetooth/pairing")
+async def bluetooth_pairing(
+    request: Request,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    # Localhost-or-owner dual-auth like /api/frame/*: the on-device frame menu
+    # (no owner token) is the primary way guests are put into pairing mode.
+    remote_addr = request.client.host if request.client else ""
+    if remote_addr not in {"127.0.0.1", "::1"}:
+        require_owner(x_pinboard_owner_token)
+    body = await read_json_object(request)
+    enabled = bool(body.get("enabled", True))
+    if enabled:
+        commands = [
+            ["power", "on"],
+            ["pairable", "on"],
+            ["discoverable-timeout", str(BT_PAIRING_TIMEOUT_SECONDS)],
+            ["discoverable", "on"],
+        ]
+    else:
+        commands = [["discoverable", "off"]]
+    try:
+        for args in commands:
+            result = await run_in_threadpool(run_btctl, args)
+            if result.returncode != 0:
+                detail = (result.stderr or result.stdout or "bluetoothctl failed.").strip()
+                raise HTTPException(status_code=400, detail=detail)
+    except FileNotFoundError:
+        raise HTTPException(status_code=400, detail="Bluetooth is not available on this device.")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=400, detail="Bluetooth controller did not respond.")
+    with db() as conn:
+        payload = bluetooth_status_payload(conn)
+    return {
+        "ok": True,
+        "bluetooth": payload,
+        "pairing_seconds": BT_PAIRING_TIMEOUT_SECONDS if enabled else 0,
+    }
 
 
 @app.get("/api/network/ip")

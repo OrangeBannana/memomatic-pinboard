@@ -232,6 +232,32 @@ def require_owner(x_pinboard_owner_token: str | None) -> None:
         raise HTTPException(status_code=401, detail="Owner token required.")
 
 
+async def read_json_object(request: Request) -> dict[str, Any]:
+    """Parse the request body as a JSON object, mapping malformed input to a
+    400 instead of an unhandled 500."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body.")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON body must be an object.")
+    return body
+
+
+def parse_int(value: Any, name: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"{name} must be an integer.")
+
+
+def parse_float(value: Any, name: str) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"{name} must be a number.")
+
+
 def require_local_request(request: Request) -> None:
     remote_addr = request.client.host if request.client else ""
     if remote_addr not in {"127.0.0.1", "::1"}:
@@ -256,7 +282,10 @@ def parse_wifi_scan(output: str) -> list[dict[str, str]]:
         if not ssid:
             continue
         existing = networks.get(ssid)
-        score = int(signal or "0")
+        try:
+            score = int(signal or "0")
+        except ValueError:
+            score = 0
         if existing is None or score > int(existing["signal"]):
             networks[ssid] = {
                 "ssid": ssid,
@@ -638,7 +667,7 @@ async def update_image(
     x_pinboard_owner_token: str | None = Header(default=None),
 ) -> dict[str, Any]:
     require_owner(x_pinboard_owner_token)
-    body = await request.json()
+    body = await read_json_object(request)
     with db() as conn:
         row = conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
         if row is None:
@@ -684,7 +713,7 @@ async def guest_upload(
 
 @app.post("/api/guest/{token}/message")
 async def guest_message(token: str, request: Request) -> dict[str, Any]:
-    body = await request.json()
+    body = await read_json_object(request)
     content = str(body.get("content", "")).strip()
     if not content:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
@@ -764,21 +793,21 @@ async def update_settings(
     x_pinboard_owner_token: str | None = Header(default=None),
 ) -> dict[str, Any]:
     require_owner(x_pinboard_owner_token)
-    body = await request.json()
+    body = await read_json_object(request)
     with db() as conn:
         if "slide_seconds" in body:
-            value = max(5, min(120, int(body["slide_seconds"])))
+            value = max(5, min(120, parse_int(body["slide_seconds"], "slide_seconds")))
             set_setting(conn, "slide_seconds", str(value))
         if "backdrop_blur_px" in body:
-            value = max(0, min(24, int(body["backdrop_blur_px"])))
+            value = max(0, min(24, parse_int(body["backdrop_blur_px"], "backdrop_blur_px")))
             set_setting(conn, "backdrop_blur_px", str(value))
         if "backdrop_brightness" in body:
-            value = max(0.25, min(1.0, float(body["backdrop_brightness"])))
+            value = max(0.25, min(1.0, parse_float(body["backdrop_brightness"], "backdrop_brightness")))
             set_setting(conn, "backdrop_brightness", str(value))
         if "guest_enabled" in body:
             set_setting(conn, "guest_enabled", "1" if bool(body["guest_enabled"]) else "0")
         if "message_display_seconds" in body:
-            value = max(3, min(30, int(body["message_display_seconds"])))
+            value = max(3, min(30, parse_int(body["message_display_seconds"], "message_display_seconds")))
             set_setting(conn, "message_display_seconds", str(value))
         if "slideshow_mode" in body:
             apply_slideshow_mode(conn, body["slideshow_mode"])
@@ -812,7 +841,7 @@ async def save_color_scheme(
     x_pinboard_owner_token: str | None = Header(default=None),
 ) -> dict[str, Any]:
     require_owner(x_pinboard_owner_token)
-    body = await request.json()
+    body = await read_json_object(request)
     name = str(body.get("name", "")).strip()
     tokens = body.get("tokens", {})
     if not name:
@@ -923,7 +952,7 @@ async def frame_mode(
     remote_addr = request.client.host if request.client else ""
     if remote_addr not in {"127.0.0.1", "::1"}:
         require_owner(x_pinboard_owner_token)
-    body = await request.json()
+    body = await read_json_object(request)
     with db() as conn:
         apply_slideshow_mode(conn, body.get("slideshow_mode"))
         return {"ok": True, "slideshow_mode": get_setting(conn, "slideshow_mode", "all")}
@@ -940,7 +969,7 @@ async def frame_clock(
     remote_addr = request.client.host if request.client else ""
     if remote_addr not in {"127.0.0.1", "::1"}:
         require_owner(x_pinboard_owner_token)
-    body = await request.json()
+    body = await read_json_object(request)
     with db() as conn:
         apply_clock_settings(conn, body)
         return {"ok": True, "clock": clock_payload(conn)}
@@ -952,7 +981,7 @@ async def save_network(
     x_pinboard_owner_token: str | None = Header(default=None),
 ) -> dict[str, Any]:
     require_owner(x_pinboard_owner_token)
-    body = await request.json()
+    body = await read_json_object(request)
     ssid = str(body.get("ssid", "")).strip()
     password = str(body.get("password", "")).strip()
     hidden = bool(body.get("hidden", False))
@@ -999,7 +1028,7 @@ async def connect_network(
     if not is_local:
         require_owner(x_pinboard_owner_token)
 
-    body = await request.json()
+    body = await read_json_object(request)
     ssid = str(body.get("ssid", "")).strip()
     password = str(body.get("password", "")).strip()
     hidden = bool(body.get("hidden", False))

@@ -8,9 +8,10 @@ import secrets
 import sqlite3
 import time
 import uuid
+from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
@@ -99,11 +100,6 @@ BUILTIN_SCHEMES: list[dict] = [
 BUILTIN_SCHEME_NAMES: set[str] = {s["name"] for s in BUILTIN_SCHEMES}
 
 
-app = FastAPI(title="Memomatic Pinboard")
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-app.mount("/images", StaticFiles(directory=DISPLAY_DIR), name="images")
-
-
 def now() -> float:
     return time.time()
 
@@ -112,6 +108,20 @@ def ensure_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     ORIGINALS_DIR.mkdir(parents=True, exist_ok=True)
     DISPLAY_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    init_db()
+    yield
+
+
+# StaticFiles requires the directory to exist when mounted, so create the data
+# dirs before the mounts rather than relying on callers to mkdir first.
+ensure_dirs()
+app = FastAPI(title="Memomatic Pinboard", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+app.mount("/images", StaticFiles(directory=DISPLAY_DIR), name="images")
 
 
 def db() -> sqlite3.Connection:
@@ -212,11 +222,6 @@ def init_db() -> None:
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
                 (key, value),
             )
-
-
-@app.on_event("startup")
-def startup() -> None:
-    init_db()
 
 
 def row_to_image(row: sqlite3.Row) -> dict[str, Any]:

@@ -752,6 +752,34 @@ async def guest_message(token: str, request: Request) -> dict[str, Any]:
     return {"ok": True}
 
 
+@app.get("/api/messages")
+def list_messages(x_pinboard_owner_token: str | None = Header(default=None)) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    with db() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, content, created_at, shown_at FROM messages
+            ORDER BY (shown_at IS NULL) DESC, created_at DESC
+            LIMIT 100
+            """
+        ).fetchall()
+        return {"messages": [dict(row) for row in rows]}
+
+
+@app.delete("/api/messages/{message_id}")
+def delete_message(
+    message_id: int,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    with db() as conn:
+        row = conn.execute("SELECT id FROM messages WHERE id = ?", (message_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Message not found.")
+        conn.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+        return {"ok": True}
+
+
 @app.post("/api/messages/{message_id}/shown")
 def mark_message_shown(
     message_id: int,

@@ -344,6 +344,46 @@
       border-radius: 8px;
     }
 
+    /* ── Messages list ── */
+    .msg-list { display: grid; gap: 8px; }
+
+    .msg-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+    }
+    .msg-row.shown { opacity: 0.55; }
+
+    .msg-content {
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: anywhere;
+      font-size: 14px;
+    }
+
+    .msg-meta {
+      flex-shrink: 0;
+      font-size: 11px;
+      color: var(--text-subtle);
+      white-space: nowrap;
+    }
+
+    .msg-row .pill { margin-bottom: 0; flex-shrink: 0; }
+    .pill.msg-pending { background: var(--accent-dim); color: var(--accent); }
+    .pill.msg-shown   { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+
+    .msg-row button {
+      min-height: 36px;
+      padding: 6px 12px;
+      font-size: 12px;
+      border-radius: 8px;
+      flex-shrink: 0;
+    }
+
     /* ── Empty state ── */
     .empty {
       padding: 28px;
@@ -460,6 +500,14 @@
           <span id="device-mdns" style="font-size:13px; font-weight:600; color:var(--text);"></span>
           <span id="device-ip-admin" style="font-size:12px; color:var(--text-muted); margin-left:8px;"></span>
         </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Messages</h2>
+          <span id="message-count" class="meta"></span>
+        </div>
+        <div id="messages-list" class="msg-list"></div>
       </section>
 
       <section class="panel">
@@ -930,6 +978,43 @@
       }
     }
 
+    const messagesList = document.getElementById('messages-list');
+    const messageCount = document.getElementById('message-count');
+
+    async function loadMessages() {
+      const data = await api('/api/messages', { cache: 'no-store' });
+      const messages = data.messages || [];
+      const pending = messages.filter(m => !m.shown_at).length;
+      messageCount.textContent = pending ? `${pending} pending · ${messages.length} total` : `${messages.length} total`;
+      messagesList.innerHTML = '';
+      if (!messages.length) {
+        messagesList.innerHTML = '<div class="empty">No guest messages yet.</div>';
+        return;
+      }
+      for (const msg of messages) {
+        const row = document.createElement('div');
+        row.className = `msg-row ${msg.shown_at ? 'shown' : ''}`;
+        const when = new Date(msg.created_at * 1000).toLocaleString([], {
+          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+        });
+        row.innerHTML = `
+          <span class="pill ${msg.shown_at ? 'msg-shown' : 'msg-pending'}">${msg.shown_at ? 'Shown' : 'Pending'}</span>
+          <span class="msg-content"></span>
+          <span class="msg-meta">${when}</span>
+          <button class="danger" data-action="delete-msg">Delete</button>
+        `;
+        row.querySelector('.msg-content').textContent = msg.content;
+        row.querySelector('[data-action="delete-msg"]').addEventListener('click', async () => {
+          try {
+            await api(`/api/messages/${msg.id}`, { method: 'DELETE' });
+            setStatus(msg.shown_at ? 'Message removed.' : 'Pending message cancelled.');
+            await loadMessages();
+          } catch (e) { setStatus(e.message); }
+        });
+        messagesList.appendChild(row);
+      }
+    }
+
     async function loadDeviceAddress() {
       try {
         const d = await fetch('/api/network/ip').then(r => r.json());
@@ -947,6 +1032,7 @@
     async function loadAll() {
       await loadSettings();
       await loadImages();
+      await loadMessages();
       await loadWifiNetworks();
       await loadColorSchemes();
       loadDeviceAddress();
@@ -1091,7 +1177,10 @@
       showAdmin(false);
     }
     window.setInterval(() => {
-      if (ownerToken) loadImages().catch(() => {});
+      if (ownerToken) {
+        loadImages().catch(() => {});
+        loadMessages().catch(() => {});
+      }
     }, 10000);
   </script>
 </body>

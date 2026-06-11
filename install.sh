@@ -26,7 +26,8 @@ apt install -y \
   chromium-browser \
   xdotool \
   avahi-daemon \
-  libnss-mdns
+  libnss-mdns \
+  build-essential
 
 install -d -o "$APP_USER" -g "$APP_USER" "$PINBOARD_HOME/app"
 install -d -o "$APP_USER" -g "$APP_USER" "$PINBOARD_HOME/app/static"
@@ -38,6 +39,9 @@ install -d -o "$APP_USER" -g "$APP_USER" "$PINBOARD_HOME/chromium-profile"
 install -m 0644 -o "$APP_USER" -g "$APP_USER" app/app.py "$PINBOARD_HOME/app/app.py"
 install -m 0755 -o "$APP_USER" -g "$APP_USER" app/kiosk.sh "$PINBOARD_HOME/app/kiosk.sh"
 install -m 0755 -o root -g root app/touch_bridge.py "$PINBOARD_HOME/app/touch_bridge.py"
+# Source for the SPI coordinate helper; pinboard-touch.service compiles it on
+# the Pi at every service start (requires gcc from build-essential above).
+install -m 0644 -o root -g root app/spi_touch_read.c "$PINBOARD_HOME/app/spi_touch_read.c"
 install -m 0755 -o root -g root app/touch_test.py "$PINBOARD_HOME/app/touch_test.py"
 install -m 0755 -o root -g root app/raw_touch.py "$PINBOARD_HOME/app/raw_touch.py"
 install -m 0755 -o root -g root app/show_splash.py "$PINBOARD_HOME/app/show_splash.py"

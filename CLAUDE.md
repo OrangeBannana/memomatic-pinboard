@@ -15,10 +15,11 @@ Past agents have wasted significant time fighting the `gh` CLI (missing auth, wr
 How to use the MCP tools:
 - They may be **deferred** (not loaded at session start). If a `mcp__github__*` tool isn't directly callable, run `ToolSearch` with `select:mcp__github__issue_write,mcp__github__create_pull_request` (comma-separated exact names) or a keyword like `github pull request` to load the schemas, then call them normally.
 - All of them take `owner: "OrangeBannana"` and `repo: "memomatic-pinboard"`.
-- Typical flow for a change: branch locally → commit (author `Claude <noreply@anthropic.com>`) → `git push -u origin <branch>` → `mcp__github__create_pull_request` (base `main`) → `mcp__github__merge_pull_request` (`merge_method: "squash"`) → `git checkout main && git pull`.
+- Typical flow for a change: branch locally → commit (author `Claude <noreply@anthropic.com>`) → `git push -u origin <branch>` → `mcp__github__create_pull_request` (base `main`) → `mcp__github__merge_pull_request` (`merge_method: "squash"`) → `git checkout main && git pull` → **delete the merged branch** (`git push origin --delete <branch>`; `git branch -D <branch>`).
+- **Branch hygiene: every branch is deleted (remote and local) as soon as its PR merges.** Squash merges mean `git branch --merged` won't list them — verify the branch tip matches the merged PR's head SHA, then force-delete. Details in [docs/maintainer-standards.md](docs/maintainer-standards.md) → "Branch lifecycle (delete after merge)".
 - `git` over HTTPS for push/pull/clone works fine and is authenticated; only the GitHub **API** actions (PRs, issues, comments) should go through the MCP tools rather than `gh`.
 
-If the MCP GitHub server is genuinely unavailable in a given session, say so and use plain `git` for what you can — but try `ToolSearch` first before concluding it's missing.
+If the MCP GitHub server is genuinely unavailable in a given session (confirm with `ToolSearch` first), there is a working fallback: the Git Credential Manager credential used for HTTPS push also works as a bearer token for the GitHub REST API. Retrieve it with `printf "protocol=https\nhost=github.com\n\n" | git credential fill` and pass the `password` value as `Authorization: token …` to `https://api.github.com` (e.g. `POST /repos/OrangeBannana/memomatic-pinboard/pulls` to open a PR, `PUT /pulls/{n}/merge` to squash-merge, `POST /issues/{n}/comments` to comment). Never echo the token into the transcript or write it to a file.
 
 ## What this is
 

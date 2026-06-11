@@ -21,6 +21,14 @@ These standards apply to work in **OrangeBannana/memomatic-pinboard**.
   - `followup/issue-123-short-summary`
 - If a branch depends on unfinished work from another branch, say so in the issue body or handoff note.
 
+### Branch lifecycle (delete after merge)
+
+- **Delete a branch as soon as its PR is merged** — both the remote branch (`git push origin --delete <branch>`) and any local copy (`git branch -D <branch>`; squash-merges require `-D` because the branch is never ancestry-merged).
+- Before deleting, confirm the branch tip matches the merged PR's head SHA so no post-merge commits are lost.
+- Branches whose PR was **closed without merging** may also be deleted once the work is superseded or abandoned — GitHub keeps the commits reachable via the PR (`refs/pull/<n>/head`), so they remain restorable from the PR page.
+- Do **not** delete branches that carry unmerged work for a still-open issue; leave a handoff note instead.
+- Periodically run `git fetch --prune` and sweep stale merged branches that earlier sessions left behind.
+
 ## Issue + task organization
 
 Use an issue for every bug, feature request, maintenance task, or follow-up item.

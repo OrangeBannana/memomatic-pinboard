@@ -732,7 +732,17 @@ async def guest_message(token: str, request: Request) -> dict[str, Any]:
 
 
 @app.post("/api/messages/{message_id}/shown")
-def mark_message_shown(message_id: int) -> dict[str, Any]:
+def mark_message_shown(
+    message_id: int,
+    request: Request,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    # Called by the frame after a message toast times out. The frame runs on
+    # the device itself, so use the same localhost-or-owner dual-auth as
+    # /api/frame/* — otherwise any LAN client could suppress queued messages.
+    remote_addr = request.client.host if request.client else ""
+    if remote_addr not in {"127.0.0.1", "::1"}:
+        require_owner(x_pinboard_owner_token)
     with db() as conn:
         conn.execute(
             "UPDATE messages SET shown_at = ? WHERE id = ? AND shown_at IS NULL",

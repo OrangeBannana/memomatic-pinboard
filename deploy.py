@@ -8,7 +8,7 @@ import io
 import os
 import sys
 
-PI_HOST = "172.19.253.202"
+PI_HOST = "192.168.50.131"
 PI_USER = "memomatic"
 PI_PASS = "memes"
 PI_HOME = "/home/memomatic/pinboard"

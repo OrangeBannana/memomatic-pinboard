@@ -587,11 +587,20 @@
     let lastInteraction = 0, pointerDownAt = 0, longPressTimer = null;
     let menuShownThisGesture = false, longPressActivated = false;
 
+    // Startup grace period: ignore all gestures for the first few seconds after
+    // load. At boot the touch bridge / Xorg can emit a phantom pointerdown with
+    // no matching pointerup, which would show the menu and then trip the 2 s
+    // long-press timer into opening the WiFi panel on its own. (see issue #23)
+    const STARTUP_GRACE_MS = 4000;
+    const startupAt = Date.now();
+    function inStartupGrace() { return Date.now() - startupAt < STARTUP_GRACE_MS; }
+
     function cancelLongPress() { clearTimeout(longPressTimer); longPressTimer = null; }
 
     document.addEventListener('pointerdown', e => {
       // Don't interfere with keyboard
       if (e.target.closest('#kbd')) return;
+      if (inStartupGrace()) return;
       const t = Date.now();
       if (t - lastInteraction < 150) return;
       lastInteraction = t;
@@ -618,6 +627,7 @@
     document.addEventListener('pointerup', e => {
       if (e.target.closest('#kbd')) return;
       cancelLongPress();
+      if (inStartupGrace()) { pointerDownAt = 0; return; }
       if (!pointerDownAt) return;
       pointerDownAt = 0;
       if (e.target.closest('.menu-panel')) return;
@@ -629,6 +639,7 @@
     // click fallback for drivers that emit click without pointer events
     document.addEventListener('click', e => {
       if (e.target.closest('#kbd')) return;
+      if (inStartupGrace()) return;
       const t = Date.now();
       if (t - lastInteraction < 300) return;
       lastInteraction = t;

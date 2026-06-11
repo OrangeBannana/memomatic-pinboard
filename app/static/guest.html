@@ -265,8 +265,11 @@
           try { const d = await response.json(); detail = d.detail || detail; } catch (_) {}
           throw new Error(detail);
         }
+        const result = await response.json().catch(() => ({}));
         fileInput.value = '';
-        photoStatus.textContent = 'Sent. Watch the frame.';
+        photoStatus.textContent = result.image?.status === 'pending'
+          ? 'Sent for approval — the owner will review it.'
+          : 'Sent. Watch the frame.';
       } catch (error) {
         photoStatus.textContent = error.message;
       } finally {

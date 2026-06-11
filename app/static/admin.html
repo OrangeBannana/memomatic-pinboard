@@ -288,6 +288,7 @@
     }
 
     .card.inactive { opacity: 0.50; }
+    .card.pending  { border-color: var(--accent); }
 
     .thumb {
       width: 100%;
@@ -481,6 +482,10 @@
             <input id="guest-enabled" type="checkbox">
             Guest uploads enabled
           </label>
+          <label class="check-row">
+            <input id="guest-review" type="checkbox">
+            Require approval before showing
+          </label>
           <button id="save-guest" type="button">Save</button>
         </div>
         <div class="qr-row">
@@ -666,6 +671,7 @@
     const imagesEl = document.getElementById('images');
     const imageCount = document.getElementById('image-count');
     const guestEnabled = document.getElementById('guest-enabled');
+    const guestReview = document.getElementById('guest-review');
     const saveGuest = document.getElementById('save-guest');
     const regenerateGuest = document.getElementById('regenerate-guest');
     const adminUrl = document.getElementById('admin-url');
@@ -726,6 +732,7 @@
 
     function applySettings(settings) {
       guestEnabled.checked = settings.guest_enabled;
+      guestReview.checked = settings.guest_review_required;
       adminUrl.value = settings.admin_url;
       guestUrl.value = settings.guest_url;
       adminQr.src = qrUrl(settings.admin_url);
@@ -919,10 +926,13 @@
 
       for (const image of data.images) {
         const card = document.createElement('article');
-        card.className = `card ${image.status === 'active' ? '' : 'inactive'}`;
+        card.className = `card ${image.status === 'active' ? '' : image.status === 'pending' ? 'pending' : 'inactive'}`;
         const activeActions = image.status === 'active'
           ? `<button class="secondary" data-action="push">Push next</button>
              <button class="secondary" data-action="hide">Hide</button>`
+          : image.status === 'pending'
+          ? `<button data-action="restore">Approve</button>
+             <button class="danger" data-action="delete">Reject</button>`
           : `<button class="secondary" data-action="restore">Restore</button>
              <button class="danger" data-action="delete">Delete</button>`;
         const isMeme = image.category === 'meme';
@@ -1084,7 +1094,10 @@
       const data = await api('/api/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guest_enabled: guestEnabled.checked })
+        body: JSON.stringify({
+          guest_enabled: guestEnabled.checked,
+          guest_review_required: guestReview.checked,
+        })
       });
       applySettings(data.settings);
       setStatus('Guest setting saved.');

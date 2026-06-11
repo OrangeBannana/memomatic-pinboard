@@ -47,7 +47,8 @@ sudo PINBOARD_OWNER_TOKEN='new-token' ./install.sh
 Guest uploads are tokenized:
 
 ```text
-http://<pi-ip>:8080/guest/<guest-token>
+http://memomatic.local:8080/guest/<guest-token>   (mDNS hostname)
+http://<pi-ip>:8080/guest/<guest-token>           (raw IP fallback)
 ```
 
 The owner admin page can:

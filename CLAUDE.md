@@ -128,7 +128,7 @@ Implementation notes:
 
 ## Deploying to the Pi
 
-Pi credentials: user `memomatic`, password `memes`. **The IP changes between sessions** — verify with `hostname -I` on the Pi or check your router. Update `PI_HOST` in `deploy.py` before running.
+Pi credentials: user `memomatic`, password `memes`. **The IP changes between sessions** — verify with `hostname -I` on the Pi or check your router. Since `install.sh` sets the hostname to `memomatic` and runs `avahi-daemon`, you can usually set `PI_HOST = "memomatic.local"` in `deploy.py` and skip chasing the IP entirely; fall back to the raw IP if mDNS isn't resolving on your network.
 
 **`deploy.py`** (in repo root) is a self-contained Python deployment script. It:
 1. Verifies SHA256 checksums of all source files locally before uploading

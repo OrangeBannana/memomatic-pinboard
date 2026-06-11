@@ -9,9 +9,19 @@ REM         Then open http://127.0.0.1:8080/admin in your browser (token: dev).
 
 setlocal
 
-REM Convert Windows path to a WSL path (e.g. C:\Users\... → /mnt/c/Users/...)
-for /f "delims=" %%i in ('wsl wslpath -u "%~dp0"') do set WSL_DIR=%%i
+REM Strip trailing backslash from %~dp0 before passing to wslpath
+set "WINDIR=%~dp0"
+if "%WINDIR:~-1%"=="\" set "WINDIR=%WINDIR:~0,-1%"
 
-wsl sh "%WSL_DIR%/run-local.sh"
+REM usebackq lets us use backticks for the command, avoiding quote conflicts
+for /f "usebackq delims=" %%i in (`wsl wslpath -u "%WINDIR%"`) do set "WSLDIR=%%i"
 
+if "%WSLDIR%"=="" (
+  echo ERROR: Could not convert path to WSL format. Is WSL installed?
+  pause
+  exit /b 1
+)
+
+wsl bash "%WSLDIR%/run-local.sh"
+pause
 endlocal

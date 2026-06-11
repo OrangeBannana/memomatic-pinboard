@@ -154,3 +154,25 @@ Bugs found and fixed across development sessions:
 6. **Stale poll interval** — `setInterval` captured the initial `pollMs` and never updated. Fixed by storing the handle and recreating it when `pollMs` changes.
 7. **Systemd ordering cycle** — `After=pinboard-kiosk.service` in touch service created a dependency cycle. Fixed by removing the kiosk dependency.
 8. **spi_touch_read always returned "err" (all-zero ADC reads)** — root cause: when `pinboard-touch.service` unbinds the `ads7846` kernel driver, GPIO7 (SPI0_CE1_N / CS1) reverts from ALT0 to input mode. The SPI peripheral believes it is asserting CS1, but the physical pin stays HIGH → ADS7846 is never selected → MISO reads back 0x00. Fixed by mapping the GPIO peripheral in `spi_touch_read.c` and calling `gpio7_alt0()` to restore GPIO7 to ALT0 before every read. Also: all `fprintf`/stderr calls in `spi_touch_read.c` must come AFTER `wrs(SPI_CS, 0)` — a `write(2)` syscall in the inter-frame hot path introduces enough latency that fbcp starts the next frame before the ADS7846 read completes.
+
+## Feature history (chronological)
+
+Larger features delivered across sessions, newest last. Each shipped as its own PR to `main`.
+
+- **Unified dark-glassmorphism UI (#12)** — `admin.html`, `guest.html`, and `frame.html` share one design language (translucent panels, backdrop blur, warm off-white text, indigo accent). All colours are CSS custom properties on `:root`. Touch targets ≥ 48 px. Reference doc: [docs/design-guidelines.md](docs/design-guidelines.md).
+- **User-configurable colour schemes (#17)** — 3 built-in schemes (`BUILTIN_SCHEMES` in `app.py`, never stored in DB) + custom schemes stored as JSON in the `settings` table. Public `GET /api/color-schemes` plus owner `POST`/`DELETE`/`activate` endpoints. Every page runs an IIFE on load that fetches the active scheme and overrides the `:root` tokens via `style.setProperty`. Admin "Appearance" panel derives the full 12-token set from 4 hex inputs via `deriveTokens()`.
+- **mDNS hostname (#14)** — `install.sh` installs `avahi-daemon` + `libnss-mdns` and sets the hostname to `memomatic`, so the device is reachable at `http://memomatic.local:8080`. `GET /api/network/ip` also returns `hostname`/`mdns`. Frame menu and admin page both show the mDNS address with the raw IP as fallback.
+- **Custom boot splash (#5)** — `app/boot_splash.png` (480×320, dark theme) written to `/dev/fb0` by `app/show_splash.py` via the `pinboard-splash.service` oneshot (`After=fbcp-ili9341`, `Before=pinboard-kiosk`). Regenerate the PNG with `python3 app/gen_boot_splash.py`. Handles 16-bit RGB565 and 32-bit framebuffers; non-fatal if Pillow/fb unavailable.
+- **Boot-time reduction (#4)** — `pinboard-app.service`: `network-online.target` → `network.target`. `pinboard-kiosk.service`: dropped `multi-user.target` dependency, `sleep 5` → `sleep 2`. `install.sh`: writes `disable_splash=1`, `dtoverlay=disable-bt`, `gpu_mem=16` to `/boot/firmware/config.txt` and masks `bluetooth.service`/`hciuart.service`. **See the touch-regression caveat below — some of these may have side effects on the touch/display timing.**
+
+Smaller fixes:
+
+9. **Unreadable dropdown options (#22)** — admin `<select>` used a translucent background that composited to near-white on the native option popup, hiding the light option text. Fixed with a solid dark `background-color` on both `select` and `select option`.
+10. **Frame opened menu + WiFi panel on boot (#23)** — a phantom boot-time `pointerdown` (no matching `pointerup`) showed the menu, then the 2 s long-press timer fired and opened the WiFi panel. Fixed with a 4 s startup grace period (`STARTUP_GRACE_MS` in `frame.html`) that ignores all pointer/click gestures right after load. **This is a client-side guard only; it does not fix the underlying touch behaviour (see #25). Verify on real hardware once touch works again.**
+
+## Open investigations
+
+- **Touchscreen regression (#25, OPEN — not yet fixed).** On-device touch reverted to an earlier broken state. **Prime suspect: the boot-time changes in #4.** Two concrete leads for the next agent:
+  1. **`gpu_mem=16`** — the fbcp-ili9341 "safe build" drives the TFT via GPU DMA. Starving the GPU to 16 MB may change fbcp's inter-frame DMA timing, which `spi_touch_read.c` busy-waits on to read the ADS7846 in the ~2 ms gap. If that window shifts, reads corrupt or return `err`. Try reverting to `gpu_mem=64` first.
+  2. **`dtoverlay=disable-bt`** — frees the PL011 UART and remaps it; confirm it doesn't disturb the SPI0/GPIO7/GPIO17 pins the touch system depends on.
+  Also re-verify: `pinboard-touch.service` is active, the `ads7846` unbind succeeded, and `spi_touch_read` recompiled (it's built on the Pi by `ExecStartPre`, so a toolchain/source mismatch would surface here). Re-run `sudo python3 app/raw_touch.py` 4-corner test if coordinates are merely off rather than absent.

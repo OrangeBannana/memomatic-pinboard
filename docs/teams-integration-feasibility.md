@@ -171,7 +171,8 @@ These are **not required** for the recommendation but reduce moderation risk:
 - ✅ **Do**: document a Power Automate / Zapier recipe that POSTs Teams image
   attachments to `POST /api/guest/{token}/images`. Optionally add the
   `pending`-review queue (§5) for pre-moderation. No Microsoft credential touches
-  the Pi.
+  the Pi. → Done: see [teams-power-automate-recipe.md](teams-power-automate-recipe.md);
+  the pending-review queue shipped as the `guest_review_required` setting (#50).
 - ❌ **Do not**: implement direct OAuth (delegated *or* application) on the
   device, store Graph refresh tokens in SQLite, or stand up a Graph
   change-notification webhook. The required `Chat.Read`-class scopes are

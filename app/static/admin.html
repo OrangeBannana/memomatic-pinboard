@@ -492,6 +492,31 @@
             <input id="message-display-seconds" type="number" min="3" max="30" step="1">
           </label>
         </div>
+
+        <hr>
+        <label class="check-row" style="margin-bottom: 14px;">
+          <input id="clock-enabled" type="checkbox">
+          Show clock on the frame
+        </label>
+        <div class="settings-grid">
+          <label class="field">
+            <span>Clock position</span>
+            <select id="clock-corner">
+              <option value="top-left">Top left</option>
+              <option value="top-right">Top right</option>
+              <option value="bottom-left">Bottom left</option>
+              <option value="bottom-right">Bottom right</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Clock size</span>
+            <select id="clock-size">
+              <option value="small">Small</option>
+              <option value="medium">Medium</option>
+              <option value="large">Large</option>
+            </select>
+          </label>
+        </div>
         <button id="save-settings" type="button">Save Display Settings</button>
       </section>
 
@@ -585,6 +610,9 @@
     const backdropBlur = document.getElementById('backdrop-blur');
     const backdropBrightness = document.getElementById('backdrop-brightness');
     const messageDisplaySeconds = document.getElementById('message-display-seconds');
+    const clockEnabled = document.getElementById('clock-enabled');
+    const clockCorner = document.getElementById('clock-corner');
+    const clockSize = document.getElementById('clock-size');
     const saveSettings = document.getElementById('save-settings');
     const saveNetwork = document.getElementById('save-network');
 
@@ -631,6 +659,11 @@
       backdropBlur.value = settings.backdrop_blur_px;
       backdropBrightness.value = settings.backdrop_brightness;
       messageDisplaySeconds.value = settings.message_display_seconds;
+      if (settings.clock) {
+        clockEnabled.checked = settings.clock.enabled;
+        clockCorner.value = settings.clock.corner;
+        clockSize.value = settings.clock.size;
+      }
     }
 
     function setNetworkStatus(message) {
@@ -944,6 +977,9 @@
           backdrop_blur_px: Number(backdropBlur.value),
           backdrop_brightness: Number(backdropBrightness.value),
           message_display_seconds: Number(messageDisplaySeconds.value),
+          clock_enabled: clockEnabled.checked,
+          clock_corner: clockCorner.value,
+          clock_size: clockSize.value,
         })
       });
       applySettings(data.settings);

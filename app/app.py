@@ -208,6 +208,7 @@ def init_db() -> None:
             "backdrop_blur_px": "8",
             "backdrop_brightness": "0.68",
             "guest_enabled": "0",
+            "guest_review_required": "0",
             "guest_token": secrets.token_urlsafe(16),
             "message_display_seconds": "8",
             "color_schemes": "[]",
@@ -362,6 +363,7 @@ def settings_payload(conn: sqlite3.Connection, request: Request) -> dict[str, An
         "backdrop_blur_px": int(get_setting(conn, "backdrop_blur_px", "8")),
         "backdrop_brightness": float(get_setting(conn, "backdrop_brightness", "0.68")),
         "guest_enabled": get_setting(conn, "guest_enabled", "0") == "1",
+        "guest_review_required": get_setting(conn, "guest_review_required", "0") == "1",
         "guest_token": guest_token,
         "admin_url": admin_url,
         "guest_url": guest_url,
@@ -474,7 +476,11 @@ def normalize_category(value: Any, default: str = "image") -> str:
 
 
 def save_upload(
-    file: UploadFile, content: bytes, source: str = "wifi-owner", category: str = "image"
+    file: UploadFile,
+    content: bytes,
+    source: str = "wifi-owner",
+    category: str = "image",
+    status: str = "active",
 ) -> dict[str, Any]:
     category = normalize_category(category)
     original_suffix = Path(file.filename or "").suffix.lower()
@@ -513,9 +519,9 @@ def save_upload(
             """
             INSERT INTO images
                 (original_name, stored_name, display_name, source, status, category, created_at)
-            VALUES (?, ?, ?, ?, 'active', ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (file.filename or original_name, original_name, display_name, source, category, now()),
+            (file.filename or original_name, original_name, display_name, source, status, category, now()),
         )
         row = conn.execute("SELECT * FROM images WHERE id = ?", (cursor.lastrowid,)).fetchone()
         return row_to_image(row)
@@ -729,10 +735,16 @@ async def guest_upload(
         if not guest_allowed(conn, token):
             raise HTTPException(status_code=404, detail="Guest upload link is disabled.")
         enforce_guest_rate_limit(conn, token, remote_addr, kind="image")
-    image = await run_in_threadpool(save_upload, file, content, "guest-link", category)
+        review_required = get_setting(conn, "guest_review_required", "0") == "1"
+    # With review on, uploads land as 'pending' (kept out of the slideshow,
+    # which only selects status='active') and are not queued as push-next
+    # until the owner approves them from the admin page.
+    status = "pending" if review_required else "active"
+    image = await run_in_threadpool(save_upload, file, content, "guest-link", category, status)
     with db() as conn:
         record_guest_submission(conn, token, remote_addr, kind="image")
-        conn.execute("UPDATE slideshow_state SET push_next_image_id = ? WHERE id = 1", (image["id"],))
+        if not review_required:
+            conn.execute("UPDATE slideshow_state SET push_next_image_id = ? WHERE id = 1", (image["id"],))
     return {"ok": True, "image": image}
 
 
@@ -870,6 +882,8 @@ async def update_settings(
             set_setting(conn, "backdrop_brightness", str(value))
         if "guest_enabled" in body:
             set_setting(conn, "guest_enabled", "1" if bool(body["guest_enabled"]) else "0")
+        if "guest_review_required" in body:
+            set_setting(conn, "guest_review_required", "1" if bool(body["guest_review_required"]) else "0")
         if "message_display_seconds" in body:
             value = max(3, min(30, parse_int(body["message_display_seconds"], "message_display_seconds")))
             set_setting(conn, "message_display_seconds", str(value))

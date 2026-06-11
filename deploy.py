@@ -8,9 +8,11 @@ import io
 import os
 import sys
 
-PI_HOST = "192.168.50.131"
-PI_USER = "memomatic"
-PI_PASS = "memes"
+# mDNS name set by install.sh; survives DHCP lease changes. Override with
+# the raw IP if .local doesn't resolve on your network:  PI_HOST=192.168.x.x py deploy.py
+PI_HOST = os.environ.get("PI_HOST", "memomatic.local")
+PI_USER = os.environ.get("PI_USER", "memomatic")
+PI_PASS = os.environ.get("PI_PASS", "memes")
 PI_HOME = "/home/memomatic/pinboard"
 
 REPO = os.path.dirname(os.path.abspath(__file__))
@@ -96,10 +98,11 @@ def main():
         "sudo cp /tmp/pinboard-app.service /etc/systemd/system/pinboard-app.service",
         "sudo cp /tmp/pinboard-kiosk.service /etc/systemd/system/pinboard-kiosk.service",
         "sudo cp /tmp/pinboard-touch.service /etc/systemd/system/pinboard-touch.service",
+        "sudo cp /tmp/pinboard-splash.service /etc/systemd/system/pinboard-splash.service",
         "sudo chmod +x /tmp/memomatic-install.sh",
         "sudo chmod +x /home/memomatic/pinboard/app/touch_bridge.py",
         "sudo systemctl daemon-reload",
-        "sudo systemctl enable pinboard-app.service pinboard-kiosk.service pinboard-touch.service",
+        "sudo systemctl enable pinboard-app.service pinboard-kiosk.service pinboard-touch.service pinboard-splash.service",
         "sudo systemctl restart pinboard-app.service",
         "sudo systemctl restart pinboard-kiosk.service",
         "sudo systemctl restart pinboard-touch.service",
@@ -110,8 +113,10 @@ def main():
     for cmd in commands:
         print(f"  $ {cmd}")
         stdin, stdout, stderr = ssh.exec_command(cmd)
-        stdin.write(PI_PASS + "\n")
-        stdin.flush()
+        if cmd.startswith("sudo"):
+            # password for sudo prompts only; non-sudo commands get no stdin
+            stdin.write(PI_PASS + "\n")
+            stdin.flush()
         out = stdout.read().decode().strip()
         err = stderr.read().decode().strip()
         if out:

@@ -184,6 +184,9 @@
       gap: 8px;
     }
 
+    #menu-main { display: grid; gap: 8px; }
+    #menu-main .menu-button { width: 100%; box-sizing: border-box; }
+
     .menu-button,
     .menu-primary {
       appearance: none;
@@ -373,6 +376,7 @@
         <div class="menu-body">
           <!-- main options -->
           <div id="menu-main">
+            <button id="mode-option" class="menu-button" type="button">Mode: All</button>
             <button id="clock-option" class="menu-button" type="button">Clock settings</button>
             <button id="wifi-option" class="menu-button" type="button">Add Wi-Fi network</button>
           </div>
@@ -469,6 +473,7 @@
           document.documentElement.style.setProperty('--backdrop-brightness', String(data.display.backdrop_brightness));
         }
         if (data.clock) applyClockSettings(data.clock);
+        if (data.slideshow_mode && Date.now() - modeChangedAt > 3000) applySlideshowMode(data.slideshow_mode);
         const newPollMs = Math.max(1000, Math.min(5000, Math.floor((data.slide_seconds || 15) * 1000 / 4)));
         if (newPollMs !== pollMs) {
           pollMs = newPollMs;
@@ -527,6 +532,34 @@
       if (clockState.enabled) renderClockTime();
     }
     setInterval(() => { if (clockState.enabled) renderClockTime(); }, 1000);
+
+    // ── Slideshow mode ───────────────────────────────────────────────────────
+    const MODE_LABELS = { all: 'All', images: 'Photos', memes: 'Memes' };
+    const MODE_CYCLE  = { all: 'images', images: 'memes', memes: 'all' };
+    let slideshowMode = 'all', modeChangedAt = 0;
+    const modeOption = document.getElementById('mode-option');
+
+    function renderModeLabel() {
+      modeOption.textContent = `Mode: ${MODE_LABELS[slideshowMode] || 'All'}`;
+    }
+    function applySlideshowMode(mode) {
+      slideshowMode = MODE_LABELS[mode] ? mode : 'all';
+      renderModeLabel();
+    }
+    modeOption.addEventListener('click', async () => {
+      const next = MODE_CYCLE[slideshowMode] || 'all';
+      applySlideshowMode(next);          // optimistic
+      modeChangedAt = Date.now();        // ignore stale poll values briefly
+      try {
+        const r = await fetch('/api/frame/mode', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slideshow_mode: next }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok && d.slideshow_mode) applySlideshowMode(d.slideshow_mode);
+      } catch (_) {}
+    });
 
     // ── Menu ──────────────────────────────────────────────────────────────
     const menuOverlay = document.getElementById('menu-overlay');

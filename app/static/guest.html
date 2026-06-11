@@ -131,6 +131,28 @@
     textarea:focus { outline: none; border-color: var(--accent); }
     textarea::placeholder { color: var(--text-subtle); }
 
+    select {
+      width: 100%;
+      min-height: 52px;
+      background: rgba(20, 20, 28, 0.96);
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      border-radius: 10px;
+      color: var(--text);
+      font: inherit;
+      font-size: 15px;
+      padding: 12px 14px;
+      cursor: pointer;
+      transition: border-color 140ms;
+    }
+    select:focus { outline: none; border-color: var(--accent); }
+    select option { background: #14141c; color: var(--text); }
+
+    .field-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: -6px;
+    }
+
     .char-count {
       text-align: right;
       font-size: 12px;
@@ -179,6 +201,11 @@
       <p>Your image will be added to the pinboard and shown next.</p>
       <form id="photo-form">
         <input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp" required>
+        <span class="field-label">Category</span>
+        <select id="photo-category">
+          <option value="image">Photo</option>
+          <option value="meme">Meme</option>
+        </select>
         <button id="upload-button" type="submit">Send Photo</button>
       </form>
       <div id="photo-status"></div>
@@ -219,6 +246,7 @@
     // Photo upload
     const photoForm = document.getElementById('photo-form');
     const fileInput = document.getElementById('file');
+    const photoCategory = document.getElementById('photo-category');
     const uploadButton = document.getElementById('upload-button');
     const photoStatus = document.getElementById('photo-status');
 
@@ -230,6 +258,7 @@
       try {
         const body = new FormData();
         body.append('file', fileInput.files[0]);
+        body.append('category', photoCategory.value);
         const response = await fetch(`/api/guest/${token}/images`, { method: 'POST', body });
         if (!response.ok) {
           let detail = response.statusText;

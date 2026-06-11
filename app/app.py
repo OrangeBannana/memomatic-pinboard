@@ -12,7 +12,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
@@ -35,6 +35,10 @@ GUEST_UPLOAD_LIMIT = 5
 GUEST_UPLOAD_WINDOW_SECONDS = 10 * 60
 CLOCK_CORNERS = {"top-left", "top-right", "bottom-left", "bottom-right"}
 CLOCK_SIZES = {"small", "medium", "large"}
+IMAGE_CATEGORIES = {"image", "meme"}
+SLIDESHOW_MODES = {"all", "images", "memes"}
+# Maps a non-"all" slideshow mode to the image category it shows.
+MODE_TO_CATEGORY = {"images": "image", "memes": "meme"}
 
 BUILTIN_SCHEMES: list[dict] = [
     {
@@ -129,10 +133,15 @@ def init_db() -> None:
                 display_name TEXT NOT NULL,
                 source TEXT NOT NULL DEFAULT 'wifi-owner',
                 status TEXT NOT NULL DEFAULT 'active',
+                category TEXT NOT NULL DEFAULT 'image',
                 created_at REAL NOT NULL
             )
             """
         )
+        # Migration: add category to pre-existing DBs that lack it.
+        columns = {r["name"] for r in conn.execute("PRAGMA table_info(images)")}
+        if "category" not in columns:
+            conn.execute("ALTER TABLE images ADD COLUMN category TEXT NOT NULL DEFAULT 'image'")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS slideshow_state (
@@ -190,6 +199,7 @@ def init_db() -> None:
             "clock_enabled": "0",
             "clock_corner": "bottom-right",
             "clock_size": "medium",
+            "slideshow_mode": "all",
         }
         for key, value in defaults.items():
             conn.execute(
@@ -209,6 +219,7 @@ def row_to_image(row: sqlite3.Row) -> dict[str, Any]:
         "original_name": row["original_name"],
         "source": row["source"],
         "status": row["status"],
+        "category": row["category"],
         "created_at": row["created_at"],
         "url": f"/images/{row['display_name']}",
     }
@@ -316,6 +327,7 @@ def settings_payload(conn: sqlite3.Connection, request: Request) -> dict[str, An
         "guest_url": guest_url,
         "message_display_seconds": int(get_setting(conn, "message_display_seconds", "8")),
         "clock": clock_payload(conn),
+        "slideshow_mode": get_setting(conn, "slideshow_mode", "all"),
     }
 
 
@@ -365,46 +377,66 @@ def get_current_image(conn: sqlite3.Connection) -> dict[str, Any] | None:
     slide_seconds = int(get_setting(conn, "slide_seconds", str(DEFAULT_SLIDE_SECONDS)))
     elapsed = now() - float(state["last_changed_at"])
 
-    active_by_id = {row["id"]: row for row in active}
-    selected: sqlite3.Row | None = None
+    # Apply the slideshow mode filter. The slideshow only advances through
+    # images whose category matches the active mode ("all" matches everything).
+    mode = get_setting(conn, "slideshow_mode", "all")
+    target_category = MODE_TO_CATEGORY.get(mode)
+    filtered = (
+        active if target_category is None
+        else [row for row in active if row["category"] == target_category]
+    )
 
-    if push_next_id in active_by_id and push_next_id != current_id:
-        selected = active_by_id[push_next_id]
+    all_by_id = {row["id"]: row for row in active}
+
+    def advance_to(row: sqlite3.Row) -> dict[str, Any]:
         conn.execute(
             """
             UPDATE slideshow_state
             SET current_image_id = ?, push_next_image_id = NULL, last_changed_at = ?
             WHERE id = 1
             """,
-            (selected["id"], now()),
+            (row["id"], now()),
         )
-    elif current_id not in active_by_id:
-        selected = active[0]
-        conn.execute(
-            """
-            UPDATE slideshow_state
-            SET current_image_id = ?, push_next_image_id = NULL, last_changed_at = ?
-            WHERE id = 1
-            """,
-            (selected["id"], now()),
-        )
-    elif elapsed >= slide_seconds:
-        selected = choose_next(active, current_id)
-        conn.execute(
-            """
-            UPDATE slideshow_state
-            SET current_image_id = ?, push_next_image_id = NULL, last_changed_at = ?
-            WHERE id = 1
-            """,
-            (selected["id"], now()),
-        )
-    else:
-        selected = active_by_id[current_id]
+        return row_to_image(row)
 
-    return row_to_image(selected)
+    # 1. A queued push-next always wins, even if its category does not match the
+    #    current mode — a pushed (e.g. guest) image is shown once regardless.
+    if push_next_id in all_by_id and push_next_id != current_id:
+        return advance_to(all_by_id[push_next_id])
+
+    # 2. No image matches the current mode: empty-category fallback. Keep showing
+    #    the last known image if it still exists; otherwise show nothing.
+    if not filtered:
+        if current_id in all_by_id:
+            return row_to_image(all_by_id[current_id])
+        return None
+
+    filtered_by_id = {row["id"]: row for row in filtered}
+
+    # 3. The current image is not in the active category (re-categorized, or a
+    #    just-pushed off-category image). Let it finish its slide, then move on
+    #    to the active category.
+    if current_id not in filtered_by_id:
+        if current_id in all_by_id and elapsed < slide_seconds:
+            return row_to_image(all_by_id[current_id])
+        return advance_to(filtered[0])
+
+    # 4. Normal advance within the active category.
+    if elapsed >= slide_seconds:
+        return advance_to(choose_next(filtered, current_id))
+
+    return row_to_image(filtered_by_id[current_id])
 
 
-def save_upload(file: UploadFile, content: bytes, source: str = "wifi-owner") -> dict[str, Any]:
+def normalize_category(value: Any, default: str = "image") -> str:
+    category = str(value or default).strip().lower()
+    return category if category in IMAGE_CATEGORIES else default
+
+
+def save_upload(
+    file: UploadFile, content: bytes, source: str = "wifi-owner", category: str = "image"
+) -> dict[str, Any]:
+    category = normalize_category(category)
     original_suffix = Path(file.filename or "").suffix.lower()
     if original_suffix not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Only JPEG, PNG, and WebP images are supported.")
@@ -440,10 +472,10 @@ def save_upload(file: UploadFile, content: bytes, source: str = "wifi-owner") ->
         cursor = conn.execute(
             """
             INSERT INTO images
-                (original_name, stored_name, display_name, source, status, created_at)
-            VALUES (?, ?, ?, ?, 'active', ?)
+                (original_name, stored_name, display_name, source, status, category, created_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?)
             """,
-            (file.filename or original_name, original_name, display_name, source, now()),
+            (file.filename or original_name, original_name, display_name, source, category, now()),
         )
         row = conn.execute("SELECT * FROM images WHERE id = ?", (cursor.lastrowid,)).fetchone()
         return row_to_image(row)
@@ -511,13 +543,14 @@ def list_images(x_pinboard_owner_token: str | None = Header(default=None)) -> di
 @app.post("/api/images")
 async def upload_image(
     file: UploadFile = File(...),
+    category: str = Form(default="image"),
     x_pinboard_owner_token: str | None = Header(default=None),
 ) -> dict[str, Any]:
     require_owner(x_pinboard_owner_token)
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Upload was empty.")
-    return {"image": save_upload(file, content)}
+    return {"image": save_upload(file, content, category=category)}
 
 
 @app.delete("/api/images/{image_id}")
@@ -591,8 +624,43 @@ def restore_image(
         return {"ok": True}
 
 
+@app.patch("/api/images/{image_id}")
+async def update_image(
+    image_id: int,
+    request: Request,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    require_owner(x_pinboard_owner_token)
+    body = await request.json()
+    with db() as conn:
+        row = conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Image not found.")
+        if "category" in body:
+            category = normalize_category(body["category"], default=row["category"])
+            conn.execute("UPDATE images SET category = ? WHERE id = ?", (category, image_id))
+            # If the currently displayed image was re-categorized, clear state so
+            # the slideshow re-picks against the active mode (like hide/delete).
+            state = conn.execute("SELECT * FROM slideshow_state WHERE id = 1").fetchone()
+            if state["current_image_id"] == image_id and category != row["category"]:
+                conn.execute(
+                    """
+                    UPDATE slideshow_state
+                    SET current_image_id = NULL, push_next_image_id = NULL, last_changed_at = 0
+                    WHERE id = 1
+                    """
+                )
+        updated = conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
+        return {"ok": True, "image": row_to_image(updated)}
+
+
 @app.post("/api/guest/{token}/images")
-async def guest_upload(token: str, request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
+async def guest_upload(
+    token: str,
+    request: Request,
+    file: UploadFile = File(...),
+    category: str = Form(default="image"),
+) -> dict[str, Any]:
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Upload was empty.")
@@ -601,7 +669,7 @@ async def guest_upload(token: str, request: Request, file: UploadFile = File(...
         if not guest_allowed(conn, token):
             raise HTTPException(status_code=404, detail="Guest upload link is disabled.")
         enforce_guest_rate_limit(conn, token, remote_addr)
-    image = save_upload(file, content, source="guest-link")
+    image = save_upload(file, content, source="guest-link", category=category)
     with db() as conn:
         conn.execute("UPDATE slideshow_state SET push_next_image_id = ? WHERE id = 1", (image["id"],))
     return {"ok": True, "image": image}
@@ -647,6 +715,25 @@ def get_settings(
         return {"settings": settings_payload(conn, request)}
 
 
+def apply_slideshow_mode(conn: sqlite3.Connection, value: Any) -> None:
+    mode = str(value)
+    if mode not in SLIDESHOW_MODES:
+        raise HTTPException(status_code=400, detail="Invalid slideshow mode.")
+    previous = get_setting(conn, "slideshow_mode", "all")
+    set_setting(conn, "slideshow_mode", mode)
+    # Changing the mode takes effect immediately: clear the current image so the
+    # next poll re-picks from the start of the newly active category rather than
+    # finishing the current slide.
+    if mode != previous:
+        conn.execute(
+            """
+            UPDATE slideshow_state
+            SET current_image_id = NULL, push_next_image_id = NULL, last_changed_at = 0
+            WHERE id = 1
+            """
+        )
+
+
 def apply_clock_settings(conn: sqlite3.Connection, body: dict[str, Any]) -> None:
     """Validate and persist any clock_* keys present in body. Shared by the
     owner settings PATCH and the localhost-permitted frame clock endpoint."""
@@ -686,6 +773,8 @@ async def update_settings(
         if "message_display_seconds" in body:
             value = max(3, min(30, int(body["message_display_seconds"])))
             set_setting(conn, "message_display_seconds", str(value))
+        if "slideshow_mode" in body:
+            apply_slideshow_mode(conn, body["slideshow_mode"])
         apply_clock_settings(conn, body)
         return {"settings": settings_payload(conn, request)}
 
@@ -812,8 +901,25 @@ def slideshow_current() -> dict[str, Any]:
             "message": message,
             "message_display_seconds": message_display_seconds,
             "clock": clock_payload(conn),
+            "slideshow_mode": get_setting(conn, "slideshow_mode", "all"),
             "server_time": now(),
         }
+
+
+@app.post("/api/frame/mode")
+async def frame_mode(
+    request: Request,
+    x_pinboard_owner_token: str | None = Header(default=None),
+) -> dict[str, Any]:
+    # Localhost-or-owner dual-auth, same as the frame clock endpoint, so the
+    # on-device frame menu (which has no owner token) can change the mode.
+    remote_addr = request.client.host if request.client else ""
+    if remote_addr not in {"127.0.0.1", "::1"}:
+        require_owner(x_pinboard_owner_token)
+    body = await request.json()
+    with db() as conn:
+        apply_slideshow_mode(conn, body.get("slideshow_mode"))
+        return {"ok": True, "slideshow_mode": get_setting(conn, "slideshow_mode", "all")}
 
 
 @app.post("/api/frame/clock")

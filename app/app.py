@@ -481,6 +481,20 @@ def save_upload(
         return row_to_image(row)
 
 
+def clear_slideshow_state_if_referenced(conn: sqlite3.Connection, image_id: int) -> None:
+    """Reset slideshow state when the given image is the current or queued
+    push-next image, so the next poll re-picks instead of using stale ids."""
+    state = conn.execute("SELECT * FROM slideshow_state WHERE id = 1").fetchone()
+    if state["current_image_id"] == image_id or state["push_next_image_id"] == image_id:
+        conn.execute(
+            """
+            UPDATE slideshow_state
+            SET current_image_id = NULL, push_next_image_id = NULL, last_changed_at = 0
+            WHERE id = 1
+            """
+        )
+
+
 def guest_allowed(conn: sqlite3.Connection, token: str) -> bool:
     return (
         get_setting(conn, "guest_enabled", "0") == "1"
@@ -564,15 +578,7 @@ def delete_image(
         if row is None:
             raise HTTPException(status_code=404, detail="Image not found.")
         conn.execute("UPDATE images SET status = 'deleted' WHERE id = ?", (image_id,))
-        state = conn.execute("SELECT * FROM slideshow_state WHERE id = 1").fetchone()
-        if state["current_image_id"] == image_id or state["push_next_image_id"] == image_id:
-            conn.execute(
-                """
-                UPDATE slideshow_state
-                SET current_image_id = NULL, push_next_image_id = NULL, last_changed_at = 0
-                WHERE id = 1
-                """
-            )
+        clear_slideshow_state_if_referenced(conn, image_id)
         return {"ok": True}
 
 
@@ -607,6 +613,7 @@ def hide_image(
         if row is None:
             raise HTTPException(status_code=404, detail="Image not found.")
         conn.execute("UPDATE images SET status = 'hidden' WHERE id = ?", (image_id,))
+        clear_slideshow_state_if_referenced(conn, image_id)
         return {"ok": True}
 
 

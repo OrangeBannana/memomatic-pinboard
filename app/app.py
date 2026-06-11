@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import socket
 import subprocess
 import secrets
@@ -38,6 +39,7 @@ CLOCK_CORNERS = {"top-left", "top-right", "bottom-left", "bottom-right"}
 CLOCK_SIZES = {"small", "medium", "large"}
 IMAGE_CATEGORIES = {"image", "meme"}
 SLIDESHOW_MODES = {"all", "images", "memes"}
+SLIDESHOW_ORDERS = {"sequential", "shuffle"}
 # Maps a non-"all" slideshow mode to the image category it shows.
 MODE_TO_CATEGORY = {"images": "image", "memes": "meme"}
 
@@ -217,6 +219,7 @@ def init_db() -> None:
             "clock_corner": "bottom-right",
             "clock_size": "medium",
             "slideshow_mode": "all",
+            "slideshow_order": "sequential",
         }
         for key, value in defaults.items():
             conn.execute(
@@ -370,6 +373,7 @@ def settings_payload(conn: sqlite3.Connection, request: Request) -> dict[str, An
         "message_display_seconds": int(get_setting(conn, "message_display_seconds", "8")),
         "clock": clock_payload(conn),
         "slideshow_mode": get_setting(conn, "slideshow_mode", "all"),
+        "slideshow_order": get_setting(conn, "slideshow_order", "sequential"),
     }
 
 
@@ -385,15 +389,22 @@ def active_images(conn: sqlite3.Connection) -> list[sqlite3.Row]:
     )
 
 
-def choose_next(active: list[sqlite3.Row], current_id: int | None) -> sqlite3.Row:
+def choose_next(
+    active: list[sqlite3.Row], current_id: int | None, order: str = "sequential"
+) -> sqlite3.Row:
+    if len(active) == 1:
+        return active[0]
+
+    if order == "shuffle":
+        # Random pick excluding the current image so a slide never repeats
+        # back-to-back. Push-next and mode filtering keep their priority.
+        return random.choice([row for row in active if row["id"] != current_id])
+
     if current_id is None:
         return active[0]
 
     ids = [row["id"] for row in active]
     if current_id not in ids:
-        return active[0]
-
-    if len(active) == 1:
         return active[0]
 
     next_index = (ids.index(current_id) + 1) % len(active)
@@ -465,7 +476,8 @@ def get_current_image(conn: sqlite3.Connection) -> dict[str, Any] | None:
 
     # 4. Normal advance within the active category.
     if elapsed >= slide_seconds:
-        return advance_to(choose_next(filtered, current_id))
+        order = get_setting(conn, "slideshow_order", "sequential")
+        return advance_to(choose_next(filtered, current_id, order))
 
     return row_to_image(filtered_by_id[current_id])
 
@@ -889,6 +901,11 @@ async def update_settings(
             set_setting(conn, "message_display_seconds", str(value))
         if "slideshow_mode" in body:
             apply_slideshow_mode(conn, body["slideshow_mode"])
+        if "slideshow_order" in body:
+            order = str(body["slideshow_order"])
+            if order not in SLIDESHOW_ORDERS:
+                raise HTTPException(status_code=400, detail="Invalid slideshow order.")
+            set_setting(conn, "slideshow_order", order)
         apply_clock_settings(conn, body)
         return {"settings": settings_payload(conn, request)}
 

@@ -52,9 +52,7 @@ Double-click or run from a Command Prompt / PowerShell. Requires WSL2 with a Lin
 ### Manual startup (without the helper script)
 
 ```bash
-# Create required data dirs first (app.py mounts them at import time)
-mkdir -p /tmp/pinboard/data /tmp/pinboard/images/originals /tmp/pinboard/images/display
-
+# Data dirs are created automatically when app.py is imported
 PINBOARD_HOME=/tmp/pinboard PINBOARD_OWNER_TOKEN=dev \
   python3 -m uvicorn app:app --reload --port 8080 --app-dir app
 ```

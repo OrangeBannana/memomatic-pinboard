@@ -9,10 +9,9 @@ import secrets
 import sqlite3
 import time
 import uuid
-from contextlib import asynccontextmanager
 from io import BytesIO
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
@@ -112,16 +111,10 @@ def ensure_dirs() -> None:
     DISPLAY_DIR.mkdir(parents=True, exist_ok=True)
 
 
-@asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    init_db()
-    yield
-
-
 # StaticFiles requires the directory to exist when mounted, so create the data
 # dirs before the mounts rather than relying on callers to mkdir first.
 ensure_dirs()
-app = FastAPI(title="Memomatic Pinboard", lifespan=lifespan)
+app = FastAPI(title="Memomatic Pinboard")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 app.mount("/images", StaticFiles(directory=DISPLAY_DIR), name="images")
 
@@ -226,6 +219,13 @@ def init_db() -> None:
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
                 (key, value),
             )
+
+
+# Run at import time, not in a FastAPI lifespan/startup hook: the Pi installs
+# fastapi from apt (0.92 on Bookworm), which predates the lifespan= kwarg and
+# silently ignores it, so the DB migrations above would never run on-device.
+# init_db is idempotent, so the once-per-process import call is safe.
+init_db()
 
 
 def row_to_image(row: sqlite3.Row) -> dict[str, Any]:

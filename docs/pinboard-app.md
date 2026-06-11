@@ -61,23 +61,77 @@ Guest uploads are rate-limited per client address and pushed live to the top of 
 
 ## API Summary
 
+Auth legend — **owner**: requires the `X-Pinboard-Owner-Token` header · **guest**: requires a valid guest token in the path plus `guest_enabled` (rate-limited) · **local/owner**: localhost (the on-device frame) or owner token · **public**: no auth.
+
 ```text
-GET    /admin
-GET    /guest/{token}
-GET    /frame
-GET    /api/images
-POST   /api/images
-DELETE /api/images/{id}
-POST   /api/images/{id}/push-next
-POST   /api/images/{id}/hide
-POST   /api/images/{id}/restore
-POST   /api/guest/{token}/images
-GET    /api/settings
-PATCH  /api/settings
-POST   /api/settings/guest-token
-GET    /api/qr.svg
-GET    /api/slideshow/current
+Pages
+GET    /                                   public       redirect to /admin
+GET    /admin                              public       owner web UI (token entered in page)
+GET    /guest/{token}                      public       guest upload page
+GET    /frame                              public       kiosk slideshow page
+
+Images
+GET    /api/images                         owner        list all images
+POST   /api/images                         owner        upload (multipart file, optional category)
+PATCH  /api/images/{id}                    owner        re-categorize (image/meme)
+DELETE /api/images/{id}                    owner        soft-delete (status='deleted')
+POST   /api/images/{id}/push-next          owner        queue to show next
+POST   /api/images/{id}/hide               owner        hide (status='hidden')
+POST   /api/images/{id}/restore            owner        restore to active (also approves pending)
+
+Guest
+POST   /api/guest/{token}/images           guest        upload (pending if review required)
+POST   /api/guest/{token}/message          guest        post a message for the frame
+
+Messages
+GET    /api/messages                       owner        list pending + recent shown
+DELETE /api/messages/{id}                  owner        delete / cancel a pending message
+POST   /api/messages/{id}/shown            local/owner  frame marks a message displayed
+
+Settings
+GET    /api/settings                       owner        all settings + admin/guest URLs
+PATCH  /api/settings                       owner        update settings (validated/clamped)
+POST   /api/settings/guest-token           owner        rotate the guest token
+
+Colour schemes
+GET    /api/color-schemes                  public       built-in + custom schemes, active name
+POST   /api/color-schemes                  owner        create/update a custom scheme
+DELETE /api/color-schemes/{name}           owner        delete a custom scheme
+POST   /api/color-schemes/{name}/activate  owner        set the active scheme
+
+Slideshow & frame
+GET    /api/slideshow/current              public       current image + display/clock/message state
+POST   /api/frame/mode                     local/owner  set slideshow_mode (all/images/memes)
+POST   /api/frame/clock                    local/owner  set clock settings
+
+Network & misc
+GET    /api/qr.svg?data=...                public       QR code SVG (text fallback without qrcode)
+GET    /api/network/wifi                   owner        scan Wi-Fi networks (nmcli)
+POST   /api/network/connect                local/owner  connect to a Wi-Fi network
+POST   /api/network/save                   owner        save a network profile for later
+GET    /api/network/ip                     public       device IP, hostname, mDNS name
 ```
+
+## Messages
+
+Guests can send short text messages (max 200 chars) from the guest page. The frame
+shows each unshown message once as a toast for `message_display_seconds`, then marks
+it shown. The owner can review pending and recent messages in the admin **Messages**
+panel and delete a pending message before the frame displays it.
+
+## Categories, modes, and order
+
+Every image has a `category` (`image` or `meme`), set at upload and changeable from
+the admin page. The `slideshow_mode` setting (`all` / `images` / `memes`) filters
+which categories the slideshow shows; it can be changed from the admin Display
+Settings panel or the frame touch menu. `slideshow_order` (`sequential` / `shuffle`)
+controls advance order. Guest uploads can optionally require owner approval
+(`guest_review_required`) before entering the slideshow.
+
+## Clock
+
+An optional clock overlay on the frame (`clock_enabled`, `clock_corner`,
+`clock_size`) is configurable from the admin page or the frame touch menu.
 
 ## Network Access
 

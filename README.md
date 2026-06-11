@@ -6,7 +6,7 @@ The app runs a FastAPI backend and a fullscreen Chromium kiosk. Images can be up
 
 ## Features
 
-- Owner upload/admin page at `http://<pi-ip>:8080/admin`
+- Owner upload/admin page at `http://memomatic.local:8080/admin` (or `http://<pi-ip>:8080/admin`)
 - Owner-token protection for admin/API actions
 - Guest upload link with enable/disable and regeneration
 - QR codes for admin and guest URLs
@@ -44,8 +44,14 @@ memes
 Open the admin page from another device on the same Wi-Fi:
 
 ```text
-http://<pi-ip>:8080/admin
+http://memomatic.local:8080/admin   (mDNS hostname — works on most modern OS)
+http://<pi-ip>:8080/admin           (raw IP fallback)
 ```
+
+`install.sh` sets the Pi's hostname to `memomatic` and runs `avahi-daemon`, so
+`memomatic.local` resolves on macOS, Windows 10+, iOS, and Linux without
+needing to know the IP. Android and older Windows may need the raw IP — the
+frame's on-screen menu and the admin page both display it.
 
 Enter the owner token to unlock. From there you can upload images, manage the image list, change display settings, and enable/share the guest upload link.
 

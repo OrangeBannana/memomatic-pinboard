@@ -648,7 +648,13 @@
 
     async function saveClock(patch) {
       // Optimistically apply locally so the change is instant, then persist.
-      applyClockSettings({ ...clockState, ...patch });
+      // The patch uses the server's prefixed clock_* keys; clockState uses the
+      // unprefixed shape that applyClockSettings reads, so map between them.
+      applyClockSettings({
+        enabled: 'clock_enabled' in patch ? patch.clock_enabled : clockState.enabled,
+        corner: 'clock_corner' in patch ? patch.clock_corner : clockState.corner,
+        size: 'clock_size' in patch ? patch.clock_size : clockState.size,
+      });
       refreshClockPanel();
       try {
         const r = await fetch('/api/frame/clock', {

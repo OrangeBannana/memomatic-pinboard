@@ -1,0 +1,20 @@
+[Unit]
+Description=SPI TFT display mirror via fbcp-ili9341
+# No After=multi-user.target here: pinboard-kiosk and pinboard-splash are
+# WantedBy=multi-user.target *and* After=this unit, so ordering this unit
+# after the target closes an ordering cycle and systemd deletes the kiosk
+# and splash jobs at boot (issue #67). fbcp only needs /dev/mem and
+# restarts on failure, so an early start is safe.
+
+[Service]
+Type=simple
+ExecStart=/home/memomatic/fbcp-ili9341/build-safe-rot180/fbcp-ili9341
+WorkingDirectory=/home/memomatic/fbcp-ili9341/build-safe-rot180
+User=root
+Restart=always
+RestartSec=2
+KillSignal=SIGKILL
+TimeoutStopSec=2
+
+[Install]
+WantedBy=multi-user.target

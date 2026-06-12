@@ -35,6 +35,7 @@ FILES = [
     ("systemd/pinboard-kiosk.service","/tmp/pinboard-kiosk.service"),
     ("systemd/pinboard-touch.service","/tmp/pinboard-touch.service"),
     ("systemd/pinboard-splash.service","/tmp/pinboard-splash.service"),
+    ("systemd/fbcp-ili9341.service",  "/tmp/fbcp-ili9341.service"),
     ("install.sh",                    "/tmp/memomatic-install.sh"),
 ]
 
@@ -44,6 +45,8 @@ def sha256_bytes(data):
 
 
 def main():
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
     try:
         import paramiko
     except ImportError:
@@ -100,11 +103,12 @@ def main():
         "sudo cp /tmp/pinboard-kiosk.service /etc/systemd/system/pinboard-kiosk.service",
         "sudo cp /tmp/pinboard-touch.service /etc/systemd/system/pinboard-touch.service",
         "sudo cp /tmp/pinboard-splash.service /etc/systemd/system/pinboard-splash.service",
+        "sudo cp /tmp/fbcp-ili9341.service /etc/systemd/system/fbcp-ili9341.service",
         "sudo chmod +x /tmp/memomatic-install.sh",
         "sudo chmod +x /home/memomatic/pinboard/app/touch_bridge.py",
         "sudo chmod +x /home/memomatic/pinboard/app/touch_diag.sh",
         "sudo systemctl daemon-reload",
-        "sudo systemctl enable pinboard-app.service pinboard-kiosk.service pinboard-touch.service pinboard-splash.service",
+        "sudo systemctl enable pinboard-app.service pinboard-kiosk.service pinboard-touch.service pinboard-splash.service fbcp-ili9341.service",
         "sudo systemctl restart pinboard-app.service",
         "sudo systemctl restart pinboard-kiosk.service",
         "sudo systemctl restart pinboard-touch.service",

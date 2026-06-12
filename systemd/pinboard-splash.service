@@ -1,7 +1,9 @@
 [Unit]
 Description=Memomatic Pinboard boot splash
-# Run after the TFT mirror is up so the image appears on the screen
-After=fbcp-ili9341.service
+# Run after the TFT mirror is up so the image appears on the screen, and
+# after getty@tty1 — the kernel console lives on tty1 and agetty clears the
+# screen when it starts, which wiped a splash drawn any earlier (issue #70).
+After=fbcp-ili9341.service getty@tty1.service
 # Finish before the kiosk claims the framebuffer
 Before=pinboard-kiosk.service
 

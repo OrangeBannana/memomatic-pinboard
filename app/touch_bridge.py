@@ -55,19 +55,32 @@ def _ensure_gpio():
 
 
 def _get_coords():
-    """Call the C SPI helper; return (sx, sy) or None on failure."""
+    """Call the C SPI helper; return (sx, sy) or None on failure.
+
+    One retry: if fbcp happens to start a frame mid-read, the samples come
+    back corrupt and the helper prints "err" — the second attempt lands in
+    clean bus state.  Failures are logged with their reason so the journal
+    explains every fallback coordinate (issue #25)."""
     if not os.path.exists(HELPER_BIN):
         return None
-    try:
-        r = subprocess.run([HELPER_BIN], capture_output=True, timeout=0.5)
-        if r.returncode == 0:
-            parts = r.stdout.decode().strip().split()
-            if len(parts) == 2:
-                sx, sy = int(parts[0]), int(parts[1])
-                if 0 <= sx < 480 and 0 <= sy < 320:
-                    return sx, sy
-    except Exception as e:
-        log.debug("spi helper error: %s", e)
+    reason = "unknown"
+    for attempt in (1, 2):
+        try:
+            r = subprocess.run([HELPER_BIN], capture_output=True, timeout=0.5)
+            if r.returncode == 0:
+                parts = r.stdout.decode().strip().split()
+                if len(parts) == 2:
+                    sx, sy = int(parts[0]), int(parts[1])
+                    if 0 <= sx < 480 and 0 <= sy < 320:
+                        return sx, sy
+                reason = "bad output %r" % r.stdout.decode().strip()
+            else:
+                reason = "err (filtered/no samples)"
+        except subprocess.TimeoutExpired:
+            reason = "timeout >0.5s"
+        except Exception as e:
+            reason = str(e)
+    log.info("spi helper failed twice (%s)", reason)
     return None
 
 

@@ -3,6 +3,40 @@
 **Branch:** `issue-25-touch-regression-fix`
 **Status:** implemented without hardware access — **needs on-device verification before merging.**
 
+## Root cause — CONFIRMED on-device 2026-06-11
+
+The original suspects are **disproven on this device**: baseline `touch_diag.sh` output shows
+`/boot/firmware/config.txt` contains **none** of #4's lines (no `gpu_mem`, no `dtoverlay=disable-bt`,
+no `disable_splash`) and `vcgencmd` reports `gpu=64M`. `install.sh` was never re-run here, so #4's
+boot-config edits never reached the hardware.
+
+The journal showed the real picture: touch was **intermittent**, not dead — `touch-down at (109, 205)`
+/ `(367, 78)` succeeded while most touches logged `touch-down (fallback 240,100)`.
+
+**Measured mechanism:**
+
+| | |
+|---|---|
+| `spi_touch_read` wall time, fbcp idle (static screen) | **0.33 – 0.69 s** (5 runs, on-device) |
+| `touch_bridge.py` subprocess timeout | **0.5 s** |
+
+The helper's TA-detection spin was 5,000,000 uncached MMIO reads (~64 ns each, slower under Chromium
+load). fbcp only drives SPI when screen content changes, so on a static slideshow the spin always ran
+to completion — racing the 0.5 s timeout. Killed → fallback (240,100); fbcp active at call time → fast
+TA path → success. The fallback coordinate intentionally toggles the menu, which made earlier
+validation look like "touch works", and the richer menu turned fallback taps into wrong-button presses
+(the spontaneous `slideshow_mode` flip to `memes` on 2026-06-11 was fallback taps hitting the mode button).
+
+**Fix in this branch:**
+- `spi_touch_read.c`: TA-detection window 5,000,000 → 250,000 iterations (~16–50 ms, longer than one
+  60 fps frame period, so an actively-transmitting fbcp is still always caught; an idle bus is safe to
+  read immediately).
+- `touch_bridge.py`: one retry on failure (covers a frame starting mid-read), failure reason logged at
+  info level so every fallback in the journal is explained.
+
+Remote verification after deploy: helper wall time drops to < 0.1 s untouched (`err`, clean rail
+values). The finger-on-screen test still needs a human.
+
 ## What this branch changes
 
 | Change | File | Why |

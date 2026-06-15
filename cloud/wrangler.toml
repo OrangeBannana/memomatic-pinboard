@@ -1,0 +1,33 @@
+# Memomatic relay — Cloudflare Worker (remote access feature, issue #87).
+# Deploy is done from YOUR Cloudflare account:
+#   1. cd cloud && npm install
+#   2. npx wrangler login
+#   3. npx wrangler d1 create memomatic        # paste the printed database_id below
+#   4. npx wrangler r2 bucket create memomatic-uploads
+#   5. npm run db:init                          # applies schema.sql
+#   6. npx wrangler secret put DEVICE_SECRET    # shared secret with the Pi sync agent
+#   7. npm run deploy
+name = "memomatic-relay"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+# Static assets (guest/owner UIs are added in stages 2-3). API paths fall
+# through to the Worker; unmatched non-API paths are served from ./public.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "memomatic"
+database_id = "REPLACE_AFTER_wrangler_d1_create"
+
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "memomatic-uploads"
+
+[vars]
+# Non-secret config. The device secret is NOT here — set it with
+# `wrangler secret put DEVICE_SECRET`.
+ALLOWED_EXT = ".jpg,.jpeg,.png,.webp"
+MAX_UPLOAD_BYTES = "15728640"   # 15 MiB, matches the Pi's PINBOARD_MAX_UPLOAD_BYTES

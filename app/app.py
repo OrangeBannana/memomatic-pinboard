@@ -365,7 +365,9 @@ def settings_payload(conn: sqlite3.Connection, request: Request) -> dict[str, An
     # session, memomatic.local the next). The token is no longer in the path —
     # the tokenless /guest route injects the stored token server-side (#75).
     try:
-        guest_host = f"{socket.gethostname()}.local"
+        # mDNS is case-insensitive, but lowercase matches what users type and
+        # what the rest of the project advertises (memomatic.local).
+        guest_host = f"{socket.gethostname().lower()}.local"
     except Exception:
         guest_host = request.url.hostname or "memomatic.local"
     port = request.base_url.port

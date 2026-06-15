@@ -43,6 +43,7 @@ install -m 0755 -o root -g root app/touch_bridge.py "$PINBOARD_HOME/app/touch_br
 # the Pi at every service start (requires gcc from build-essential above).
 install -m 0644 -o root -g root app/spi_touch_read.c "$PINBOARD_HOME/app/spi_touch_read.c"
 install -m 0755 -o root -g root app/touch_test.py "$PINBOARD_HOME/app/touch_test.py"
+install -m 0755 -o root -g root app/touch_diag.sh "$PINBOARD_HOME/app/touch_diag.sh"
 install -m 0755 -o root -g root app/raw_touch.py "$PINBOARD_HOME/app/raw_touch.py"
 install -m 0755 -o root -g root app/show_splash.py "$PINBOARD_HOME/app/show_splash.py"
 install -m 0644 -o root -g root app/boot_splash.png "$PINBOARD_HOME/app/boot_splash.png"
@@ -100,9 +101,16 @@ for BOOTCFG in /boot/firmware/config.txt /boot/config.txt; do
   # Disable on-board Bluetooth — frees up UART and eliminates hciuart.service delay
   grep -q "^dtoverlay=disable-bt" "$BOOTCFG" || echo "dtoverlay=disable-bt" >> "$BOOTCFG"
 
-  # Reduce GPU memory to minimum (16 MB) — Pi Zero 2 W has no HDMI display
-  if ! grep -q "^gpu_mem" "$BOOTCFG"; then
-    echo "gpu_mem=16" >> "$BOOTCFG"
+  # GPU memory: keep the firmware default of 64 MB. The boot-time work (#4)
+  # set gpu_mem=16, but the fbcp-ili9341 "safe build" mirrors the framebuffer
+  # through the GPU, and starving it changes the SPI frame cadence that
+  # spi_touch_read.c busy-waits on to read the ADS7846 in the ~2 ms
+  # inter-frame gap — prime suspect for the touchscreen regression (#25).
+  if grep -q "^gpu_mem=16$" "$BOOTCFG"; then
+    # Remediate devices provisioned while #4's gpu_mem=16 was in place.
+    sed -i 's/^gpu_mem=16$/gpu_mem=64/' "$BOOTCFG"
+  elif ! grep -q "^gpu_mem" "$BOOTCFG"; then
+    echo "gpu_mem=64" >> "$BOOTCFG"
   fi
 done
 

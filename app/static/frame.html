@@ -571,7 +571,7 @@
     const networkHidden = document.getElementById('network-hidden');
     const networkCancel = document.getElementById('network-cancel');
     const networkStatus = document.getElementById('network-status');
-    let menuVisible = false, connecting = false;
+    let menuVisible = false, connecting = false, menuShownAt = 0;
 
     function hideMenu() {
       menuVisible = false;
@@ -585,6 +585,7 @@
     }
 
     function showMenu() {
+      menuShownAt = Date.now();
       menuVisible = true;
       menuOverlay.classList.add('visible');
       menuOverlay.setAttribute('aria-hidden', 'false');
@@ -842,9 +843,14 @@
       if (e.target.closest('#kbd')) return;
       if (inStartupGrace()) return;
       const t = Date.now();
+      if (e.target.closest('.menu-panel')) {
+        // Tap-through guard: menu opened on pointerdown of this same gesture —
+        // stop the click from reaching the button that appeared under the finger.
+        if (t - menuShownAt < 300) { e.stopPropagation(); e.preventDefault(); }
+        return;
+      }
       if (t - lastInteraction < 300) return;
       lastInteraction = t;
-      if (e.target.closest('.menu-panel')) return;
       e.preventDefault();
       if (!menuVisible) showMenu();
       else if (!connecting) hideMenu();

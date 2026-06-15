@@ -4,8 +4,15 @@ Description=Memomatic touch bridge (ADS7846 GPIO polling + SPI coord reader)
 [Service]
 Type=simple
 User=root
-ExecStartPre=/bin/sh -c 'gcc -O2 -o /home/memomatic/pinboard/app/spi_touch_read /home/memomatic/pinboard/app/spi_touch_read.c 2>/dev/null; true'
+# Compile the SPI coordinate helper. Failures are logged to the journal but
+# do not block startup — touch_bridge.py degrades to a fixed fallback
+# coordinate without the binary. (Previously errors went to /dev/null, which
+# made a missing-gcc / stale-binary regression invisible: issue #25.)
+ExecStartPre=/bin/sh -c 'if ! command -v gcc >/dev/null 2>&1; then echo "ERROR: gcc not installed; spi_touch_read cannot be built (touch falls back to fixed coords)"; elif gcc -O2 -o /home/memomatic/pinboard/app/spi_touch_read /home/memomatic/pinboard/app/spi_touch_read.c; then echo "spi_touch_read compiled OK"; else echo "ERROR: spi_touch_read compile FAILED (touch falls back to fixed coords)"; fi; true'
 ExecStartPre=/bin/sh -c 'echo spi0.1 | tee /sys/bus/spi/drivers/ads7846/unbind 2>/dev/null; echo 529 | tee /sys/class/gpio/export 2>/dev/null; echo in | tee /sys/class/gpio/gpio529/direction 2>/dev/null; true'
+# Report the post-unbind state so the journal shows whether the kernel driver
+# actually released spi0.1 (a still-bound ads7846 corrupts fbcp's SPI state).
+ExecStartPre=/bin/sh -c 'if [ -e /sys/bus/spi/devices/spi0.1/driver ]; then echo "WARNING: spi0.1 still bound to $(basename $(readlink /sys/bus/spi/devices/spi0.1/driver))"; else echo "ads7846 unbind OK (spi0.1 has no kernel driver)"; fi; true'
 ExecStartPre=/bin/sleep 15
 ExecStart=/usr/bin/python3 /home/memomatic/pinboard/app/touch_bridge.py
 Restart=always

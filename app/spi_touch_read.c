@@ -97,11 +97,22 @@ static void gpio7_alt0(void)
 }
 
 /* Busy-wait until fbcp finishes the current frame (TA goes 1 → 0).
- * Returns 1 if a 1→0 transition was seen, 0 if fbcp wasn't detected. */
+ * Returns 1 if a 1→0 transition was seen, 0 if fbcp wasn't detected.
+ *
+ * The detection window must stay well under touch_bridge.py's 0.5 s
+ * subprocess timeout.  fbcp only drives SPI when the screen content
+ * changes; on a static slideshow the bus idles for seconds at a time, and
+ * an idle bus is safe to read immediately — there is nothing to collide
+ * with.  The original 5,000,000-iteration spin took 0.33–0.7 s (measured
+ * on-device, ~64 ns/MMIO read, slower under Chromium load), so on a static
+ * screen the helper blew the timeout and every touch fell back to the
+ * fixed coordinate (issue #25).  250,000 iterations ≈ 16–50 ms — longer
+ * than one 60 fps frame period, so an actively-transmitting fbcp is still
+ * always detected, and the idle case returns fast. */
 static int wait_interframe(void)
 {
     int ta_seen = 0;
-    for (long i = 0; i < 5000000L; i++) {
+    for (long i = 0; i < 250000L; i++) {
         if (rds(SPI_CS) & CS_TA) { ta_seen = 1; break; }
     }
     if (ta_seen) {

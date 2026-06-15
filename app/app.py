@@ -853,11 +853,10 @@ def mark_message_shown(
     remote_addr = request.client.host if request.client else ""
     if remote_addr not in {"127.0.0.1", "::1"}:
         require_owner(x_pinboard_owner_token)
+    # Shown messages aren't kept — delete the row so the dashboard only ever
+    # holds queued (not-yet-shown) messages (issue #80).
     with db() as conn:
-        conn.execute(
-            "UPDATE messages SET shown_at = ? WHERE id = ? AND shown_at IS NULL",
-            (now(), message_id),
-        )
+        conn.execute("DELETE FROM messages WHERE id = ?", (message_id,))
     return {"ok": True}
 
 

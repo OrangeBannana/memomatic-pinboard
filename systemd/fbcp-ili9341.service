@@ -8,8 +8,11 @@ Description=SPI TFT display mirror via fbcp-ili9341
 
 [Service]
 Type=simple
-ExecStart=/home/memomatic/fbcp-ili9341/build-safe-rot180/fbcp-ili9341
-WorkingDirectory=/home/memomatic/fbcp-ili9341/build-safe-rot180
+# build-safe = rot0 (no DISPLAY_ROTATE_180_DEGREES); build-safe-rot180 is the
+# 180°-flipped variant. Same cmake flags otherwise. The display orientation
+# and the touch axis inversion in spi_touch_read.c must agree (issue #85).
+ExecStart=/home/memomatic/fbcp-ili9341/build-safe/fbcp-ili9341
+WorkingDirectory=/home/memomatic/fbcp-ili9341/build-safe
 User=root
 Restart=always
 RestartSec=2

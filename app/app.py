@@ -360,7 +360,17 @@ def settings_payload(conn: sqlite3.Connection, request: Request) -> dict[str, An
     guest_token = get_setting(conn, "guest_token", "")
     base_url = str(request.base_url).rstrip("/")
     admin_url = f"{base_url}/admin"
-    guest_url = f"{base_url}/guest/{guest_token}" if guest_token else ""
+    # Advertise a stable, clean guest URL on the device's mDNS hostname so it
+    # doesn't shift with however the admin reached this page (raw DHCP IP one
+    # session, memomatic.local the next). The token is no longer in the path —
+    # the tokenless /guest route injects the stored token server-side (#75).
+    try:
+        guest_host = f"{socket.gethostname()}.local"
+    except Exception:
+        guest_host = request.url.hostname or "memomatic.local"
+    port = request.base_url.port
+    guest_netloc = f"{guest_host}:{port}" if port else guest_host
+    guest_url = f"{request.url.scheme}://{guest_netloc}/guest"
     return {
         "slide_seconds": int(get_setting(conn, "slide_seconds", str(DEFAULT_SLIDE_SECONDS))),
         "backdrop_blur_px": int(get_setting(conn, "backdrop_blur_px", "8")),
@@ -597,6 +607,17 @@ def root() -> str:
 @app.get("/admin", response_class=HTMLResponse)
 def admin() -> str:
     return (STATIC_DIR / "admin.html").read_text()
+
+
+@app.get("/guest", response_class=HTMLResponse)
+def guest_default() -> str:
+    # Tokenless entry point so the advertised guest URL can stay a clean,
+    # constant "<host>/guest" (issue #75). The stored guest token is injected
+    # server-side exactly like the /guest/{token} route, so the token never
+    # appears in the URL bar and guest_allowed()'s token check still applies.
+    with db() as conn:
+        token = get_setting(conn, "guest_token", "")
+    return (STATIC_DIR / "guest.html").read_text().replace("__GUEST_TOKEN__", token)
 
 
 @app.get("/guest/{token}", response_class=HTMLResponse)

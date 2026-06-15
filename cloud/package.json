@@ -1,0 +1,15 @@
+{
+  "name": "memomatic-relay",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Cloudflare Worker relay for Memomatic remote access (issue #87).",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute memomatic --file=./schema.sql",
+    "db:init:local": "wrangler d1 execute memomatic --local --file=./schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^3.90.0"
+  }
+}

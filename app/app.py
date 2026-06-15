@@ -671,9 +671,18 @@ def delete_image(
         row = conn.execute("SELECT * FROM images WHERE id = ?", (image_id,)).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="Image not found.")
-        conn.execute("UPDATE images SET status = 'deleted' WHERE id = ?", (image_id,))
+        # Hard delete: drop the DB row and the files on disk. Clear slideshow
+        # state first so a poll mid-delete can't resurrect a now-missing image.
+        # (Hide is the reversible "remove from slideshow" option; Delete is
+        # permanent — see CLAUDE.md.)
         clear_slideshow_state_if_referenced(conn, image_id)
-        return {"ok": True}
+        conn.execute("DELETE FROM images WHERE id = ?", (image_id,))
+    for path in (DISPLAY_DIR / row["display_name"], ORIGINALS_DIR / row["stored_name"]):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass  # best-effort; the DB row is already gone
+    return {"ok": True}
 
 
 @app.post("/api/images/{image_id}/push-next")

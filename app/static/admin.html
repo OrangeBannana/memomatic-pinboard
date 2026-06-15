@@ -1038,6 +1038,8 @@
           await loadImages();
         });
         if (del) del.addEventListener('click', async () => {
+          // Delete is permanent (removes the files + DB row), so confirm first.
+          if (!confirm('Delete this image permanently? This cannot be undone.')) return;
           await api(`/api/images/${image.id}`, { method: 'DELETE' });
           setStatus('Image deleted.');
           await loadImages();

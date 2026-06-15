@@ -89,6 +89,38 @@
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
 
+    /* ── Segmented selector (category) — same look as the tabs, distinct
+          class so it isn't caught by the tab panel-switching handler. ── */
+    .seg {
+      display: flex;
+      gap: 0;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--glass-border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .seg-option {
+      flex: 1;
+      appearance: none;
+      border: none;
+      border-radius: 0;
+      min-height: 48px;
+      padding: 11px 12px;
+      background: transparent;
+      color: var(--text-muted);
+      font: inherit;
+      font-size: 15px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 140ms, color 140ms;
+    }
+    .seg-option:not(:last-child) { border-right: 1px solid var(--glass-border); }
+    .seg-option.active {
+      background: var(--accent);
+      color: #fff;
+      font-weight: 650;
+    }
+
     /* ── Description text ── */
     p {
       margin-bottom: 14px;
@@ -202,10 +234,10 @@
       <form id="photo-form">
         <input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp" required>
         <span class="field-label">Category</span>
-        <select id="photo-category">
-          <option value="image">Photo</option>
-          <option value="meme">Meme</option>
-        </select>
+        <div class="seg" id="photo-category" role="group" aria-label="Category">
+          <button type="button" class="seg-option active" data-value="image">Photo</button>
+          <button type="button" class="seg-option" data-value="meme">Meme</button>
+        </div>
         <button id="upload-button" type="submit">Send Photo</button>
       </form>
       <div id="photo-status"></div>
@@ -250,6 +282,15 @@
     const uploadButton = document.getElementById('upload-button');
     const photoStatus = document.getElementById('photo-status');
 
+    // Category segmented selector: track the chosen option via .active.
+    let categoryValue = 'image';
+    photoCategory.addEventListener('click', (e) => {
+      const opt = e.target.closest('.seg-option');
+      if (!opt) return;
+      categoryValue = opt.dataset.value;
+      photoCategory.querySelectorAll('.seg-option').forEach(o => o.classList.toggle('active', o === opt));
+    });
+
     photoForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!fileInput.files.length) return;
@@ -258,7 +299,7 @@
       try {
         const body = new FormData();
         body.append('file', fileInput.files[0]);
-        body.append('category', photoCategory.value);
+        body.append('category', categoryValue);
         const response = await fetch(`/api/guest/${token}/images`, { method: 'POST', body });
         if (!response.ok) {
           let detail = response.statusText;

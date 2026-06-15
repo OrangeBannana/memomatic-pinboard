@@ -233,6 +233,13 @@ int main(void)
     if (sx < 0) sx = 0; if (sx >= SCREEN_W) sx = SCREEN_W - 1;
     if (sy < 0) sy = 0; if (sy >= SCREEN_H) sy = SCREEN_H - 1;
 
+    /* Display runs the rot0 fbcp build (build-safe). The calibration above was
+     * captured against the rot180 build, so flip both axes 180° to match the
+     * current orientation — a 180° rotation is a pure point inversion. If the
+     * display rotation ever changes, this inversion must change with it (#85). */
+    sx = SCREEN_W - 1 - sx;
+    sy = SCREEN_H - 1 - sy;
+
     printf("%d %d\n", sx, sy);
     return 0;
 }

@@ -42,3 +42,12 @@ CREATE TABLE IF NOT EXISTS event_codes (
   expires_at INTEGER,
   active     INTEGER NOT NULL DEFAULT 1
 );
+
+-- Sliding-window rate-limit log (per code+IP for uploads/messages, per IP for
+-- code-verify attempts). Pruned opportunistically on each check.
+CREATE TABLE IF NOT EXISTS rate_log (
+  id    INTEGER PRIMARY KEY AUTOINCREMENT,
+  scope TEXT NOT NULL,
+  at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rate_scope ON rate_log(scope, at);

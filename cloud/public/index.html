@@ -3,12 +3,237 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Memomatic</title>
+  <title>Send to Memomatic</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg:           #0b0b0e;
+      --glass-bg:     rgba(20, 20, 28, 0.82);
+      --glass-border: rgba(255, 255, 255, 0.10);
+      --glass-blur:   20px;
+      --text:         #ede9e1;
+      --text-muted:   rgba(237, 233, 225, 0.58);
+      --text-subtle:  rgba(237, 233, 225, 0.30);
+      --accent:       #7c6af5;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh; display: grid; place-items: center; padding: 20px 12px;
+      background: var(--bg);
+      background-image: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(124,106,245,0.07) 0%, transparent 100%);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 15px; line-height: 1.5;
+    }
+    main {
+      width: min(460px, 100%);
+      background: var(--glass-bg); border: 1px solid var(--glass-border);
+      border-radius: 20px; padding: 24px 20px;
+      backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
+      -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.3);
+    }
+    h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 18px; }
+    p { margin-bottom: 14px; color: var(--text-muted); font-size: 14px; }
+
+    .tabs, .seg {
+      display: flex; gap: 0; background: rgba(255,255,255,0.06);
+      border: 1px solid var(--glass-border); border-radius: 10px; overflow: hidden;
+    }
+    .tabs { margin-bottom: 20px; }
+    .tab, .seg-option {
+      flex: 1; appearance: none; border: none; border-radius: 0; min-height: 48px;
+      padding: 11px 12px; background: transparent; color: var(--text-muted);
+      font: inherit; font-size: 15px; font-weight: 500; cursor: pointer;
+      transition: background 140ms, color 140ms;
+    }
+    .tab:not(:last-child), .seg-option:not(:last-child) { border-right: 1px solid var(--glass-border); }
+    .tab.active, .seg-option.active { background: var(--accent); color: #fff; font-weight: 650; }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    form { display: grid; gap: 12px; }
+
+    input[type="file"], input[type="text"], textarea {
+      width: 100%; min-height: 52px; background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.11); border-radius: 10px; color: var(--text);
+      font: inherit; font-size: 15px; padding: 12px 14px; transition: border-color 140ms;
+    }
+    input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    textarea { min-height: 120px; resize: vertical; }
+    textarea::placeholder, input::placeholder { color: var(--text-subtle); }
+    input[type="text"]#code { text-transform: uppercase; letter-spacing: 3px; font-size: 20px; text-align: center; }
+
+    .field-label { font-size: 13px; color: var(--text-muted); margin-bottom: -6px; }
+    .char-count { text-align: right; font-size: 12px; color: var(--text-subtle); margin-top: -6px; }
+    .char-count.over { color: #e85454; }
+
+    button.primary {
+      appearance: none; width: 100%; min-height: 52px; padding: 13px 20px;
+      border: 1px solid transparent; border-radius: 10px; background: var(--accent);
+      color: #fff; font: inherit; font-size: 16px; font-weight: 650; cursor: pointer;
+      transition: opacity 140ms, transform 80ms;
+    }
+    button.primary:disabled { opacity: 0.36; cursor: wait; }
+    button.primary:not(:disabled):active { transform: scale(0.98); }
+    button.primary:not(:disabled):hover { opacity: 0.86; }
+
+    .status { min-height: 22px; margin-top: 4px; font-size: 14px; color: var(--text-muted); }
+    .status.error { color: #e85454; }
+    .hidden { display: none !important; }
+  </style>
 </head>
-<body style="font-family: system-ui, sans-serif; background:#0b0b0e; color:#ede9e1; display:grid; place-items:center; min-height:100vh; margin:0;">
-  <main style="text-align:center; padding:24px;">
-    <h1>Memomatic</h1>
-    <p style="color:#9b978f;">Remote access relay. The guest and owner pages are added in later stages.</p>
+<body>
+  <main>
+    <h1>Send to Memomatic</h1>
+
+    <!-- Gate: enter the per-event code -->
+    <section id="gate">
+      <p>Enter the event code shown by the owner to send photos and messages to the frame.</p>
+      <form id="code-form">
+        <input id="code" type="text" inputmode="latin" autocomplete="off" autocapitalize="characters"
+               placeholder="CODE" maxlength="12" required>
+        <button class="primary" type="submit">Continue</button>
+      </form>
+      <div id="code-status" class="status"></div>
+    </section>
+
+    <!-- App: shown after a valid code -->
+    <section id="app" class="hidden">
+      <div class="tabs">
+        <button class="tab active" data-tab="photo" type="button">Photo</button>
+        <button class="tab" data-tab="message" type="button">Message</button>
+      </div>
+
+      <div id="tab-photo" class="tab-panel active">
+        <p>Your image is sent to the frame and shown next.</p>
+        <form id="photo-form">
+          <input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp" required>
+          <span class="field-label">Category</span>
+          <div class="seg" id="photo-category" role="group" aria-label="Category">
+            <button type="button" class="seg-option active" data-value="image">Photo</button>
+            <button type="button" class="seg-option" data-value="meme">Meme</button>
+          </div>
+          <button class="primary" id="upload-button" type="submit">Send Photo</button>
+        </form>
+        <div id="photo-status" class="status"></div>
+      </div>
+
+      <div id="tab-message" class="tab-panel">
+        <p>Your message appears on screen for a few seconds.</p>
+        <form id="msg-form">
+          <textarea id="msg-text" placeholder="Type your message…" maxlength="200" required></textarea>
+          <div class="char-count"><span id="char-count">0</span> / 200</div>
+          <button class="primary" id="msg-button" type="submit">Send Message</button>
+        </form>
+        <div id="msg-status" class="status"></div>
+      </div>
+    </section>
   </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    async function post(path, opts) {
+      const r = await fetch(path, { method: "POST", credentials: "same-origin", ...opts });
+      let data = {};
+      try { data = await r.json(); } catch (_) {}
+      if (!r.ok) throw new Error(data.error || r.statusText);
+      return data;
+    }
+    function setStatus(el, msg, isError) {
+      el.textContent = msg;
+      el.classList.toggle("error", !!isError);
+    }
+
+    // Gate: verify the event code, then reveal the app.
+    const codeForm = $("code-form");
+    codeForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = codeForm.querySelector("button");
+      btn.disabled = true;
+      setStatus($("code-status"), "Checking…");
+      try {
+        await post("/api/g/verify", {
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code: $("code").value.trim() }),
+        });
+        $("gate").classList.add("hidden");
+        $("app").classList.remove("hidden");
+      } catch (err) {
+        setStatus($("code-status"), err.message, true);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Tabs
+    document.querySelectorAll(".tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+        tab.classList.add("active");
+        $(`tab-${tab.dataset.tab}`).classList.add("active");
+      });
+    });
+
+    // Category segmented selector
+    let categoryValue = "image";
+    $("photo-category").addEventListener("click", (e) => {
+      const opt = e.target.closest(".seg-option");
+      if (!opt) return;
+      categoryValue = opt.dataset.value;
+      $("photo-category").querySelectorAll(".seg-option")
+        .forEach((o) => o.classList.toggle("active", o === opt));
+    });
+
+    // Photo upload
+    const photoForm = $("photo-form");
+    photoForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const file = $("file");
+      if (!file.files.length) return;
+      $("upload-button").disabled = true;
+      setStatus($("photo-status"), "Sending…");
+      try {
+        const body = new FormData();
+        body.append("file", file.files[0]);
+        body.append("category", categoryValue);
+        await post("/api/g/upload", { body });
+        file.value = "";
+        setStatus($("photo-status"), "Sent. Watch the frame.");
+      } catch (err) {
+        setStatus($("photo-status"), err.message, true);
+      } finally {
+        $("upload-button").disabled = false;
+      }
+    });
+
+    // Message
+    const msgText = $("msg-text");
+    msgText.addEventListener("input", () => {
+      const n = msgText.value.length;
+      $("char-count").textContent = n;
+      $("char-count").parentElement.classList.toggle("over", n > 200);
+    });
+    $("msg-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const content = msgText.value.trim();
+      if (!content) return;
+      $("msg-button").disabled = true;
+      setStatus($("msg-status"), "Sending…");
+      try {
+        await post("/api/g/message", {
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ content }),
+        });
+        msgText.value = "";
+        $("char-count").textContent = "0";
+        setStatus($("msg-status"), "Sent. Watch the frame.");
+      } catch (err) {
+        setStatus($("msg-status"), err.message, true);
+      } finally {
+        $("msg-button").disabled = false;
+      }
+    });
+  </script>
 </body>
 </html>

@@ -1,0 +1,24 @@
+[Unit]
+Description=Memomatic cloud sync agent (remote access, issue #87)
+# Needs the local app reachable (it applies settings via the local API) and
+# outbound network. Outbound-only; opens no inbound ports.
+After=pinboard-app.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=memomatic
+WorkingDirectory=/home/memomatic/pinboard/app
+Environment=PINBOARD_HOME=/home/memomatic/pinboard
+# Secrets/config live OUTSIDE the repo. Create /etc/memomatic/cloudsync.env with:
+#   PINBOARD_CLOUD_URL=https://memomatic-relay.<you>.workers.dev
+#   PINBOARD_CLOUD_SECRET=<same value as the Worker's DEVICE_SECRET>
+#   PINBOARD_OWNER_TOKEN=<same owner token as pinboard-app>
+# The leading - means the unit still starts (idle) if the file is absent.
+EnvironmentFile=-/etc/memomatic/cloudsync.env
+ExecStart=/usr/bin/python3 /home/memomatic/pinboard/app/cloud_sync.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

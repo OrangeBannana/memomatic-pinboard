@@ -100,6 +100,16 @@
     #clock.corner-top-right    { top: 16px;    right: 16px; }
     #clock.corner-bottom-left  { bottom: 16px; left: 16px;  }
     #clock.corner-bottom-right { bottom: 16px; right: 16px; }
+    /* Centered-clock display mode: big clock in the middle, no pill — the whole
+       backdrop is already heavily blurred/dimmed (focus blur/brightness vars). */
+    #clock.focus {
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: grid; place-items: center;
+      padding: 0; background: none;
+      backdrop-filter: none; -webkit-backdrop-filter: none;
+      font-size: clamp(56px, 16vw, 140px);
+    }
+    #clock.focus.visible { display: grid; }
 
     /* ── Menu overlay ── */
     .menu-overlay {
@@ -468,9 +478,14 @@
       try {
         const r = await fetch('/api/slideshow/current', { cache: 'no-store' });
         const data = await r.json();
+        const focus = !!(data.clock && data.clock.focus);
         if (data.display) {
-          document.documentElement.style.setProperty('--backdrop-blur', `${data.display.backdrop_blur_px}px`);
-          document.documentElement.style.setProperty('--backdrop-brightness', String(data.display.backdrop_brightness));
+          // Centered-clock mode uses its own (stronger) blur/dim; otherwise the
+          // normal backdrop settings.
+          const blur = focus ? data.clock.focus_blur_px : data.display.backdrop_blur_px;
+          const bright = focus ? data.clock.focus_brightness : data.display.backdrop_brightness;
+          document.documentElement.style.setProperty('--backdrop-blur', `${blur}px`);
+          document.documentElement.style.setProperty('--backdrop-brightness', String(bright));
         }
         if (data.clock) applyClockSettings(data.clock);
         if (data.slideshow_mode && Date.now() - modeChangedAt > 3000) applySlideshowMode(data.slideshow_mode);
@@ -511,7 +526,7 @@
     // Local mirror of server-side clock settings; updated whenever a poll or a
     // frame-menu change arrives. The frame menu writes via POST /api/frame/clock
     // (localhost dual-auth) so changes survive reboot and sync to the admin page.
-    let clockState = { enabled: false, corner: 'bottom-right', size: 'medium' };
+    let clockState = { enabled: false, corner: 'bottom-right', size: 'medium', focus: false };
 
     function renderClockTime() {
       let h = new Date().getHours();
@@ -526,12 +541,18 @@
         enabled: !!clock.enabled,
         corner: clock.corner || 'bottom-right',
         size: clock.size || 'medium',
+        focus: !!clock.focus,
       };
-      clockEl.className = `corner-${clockState.corner} size-${clockState.size}` +
-        (clockState.enabled ? ' visible' : '');
-      if (clockState.enabled) renderClockTime();
+      // Focus mode always shows the clock, centered, regardless of the corner
+      // clock's enabled/position/size.
+      const show = clockState.focus || clockState.enabled;
+      clockEl.className = (clockState.focus
+        ? 'focus'
+        : `corner-${clockState.corner} size-${clockState.size}`)
+        + (show ? ' visible' : '');
+      if (show) renderClockTime();
     }
-    setInterval(() => { if (clockState.enabled) renderClockTime(); }, 1000);
+    setInterval(() => { if (clockState.enabled || clockState.focus) renderClockTime(); }, 1000);
 
     // ── Slideshow mode ───────────────────────────────────────────────────────
     const MODE_LABELS = { all: 'All', images: 'Photos', memes: 'Memes' };
@@ -655,6 +676,7 @@
         enabled: 'clock_enabled' in patch ? patch.clock_enabled : clockState.enabled,
         corner: 'clock_corner' in patch ? patch.clock_corner : clockState.corner,
         size: 'clock_size' in patch ? patch.clock_size : clockState.size,
+        focus: clockState.focus,  // not set from the frame menu; preserve it
       });
       refreshClockPanel();
       try {

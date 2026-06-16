@@ -630,6 +630,22 @@
             </select>
           </label>
         </div>
+
+        <hr>
+        <label class="check-row" style="margin-bottom: 14px;">
+          <input id="clock-focus" type="checkbox">
+          Centered clock mode (big clock, background fully blurred &amp; dimmed)
+        </label>
+        <div class="settings-grid">
+          <label class="field">
+            <span>Centered-clock blur</span>
+            <input id="clock-focus-blur" type="number" min="0" max="60" step="1">
+          </label>
+          <label class="field">
+            <span>Centered-clock brightness</span>
+            <input id="clock-focus-brightness" type="number" min="0" max="1" step="0.05">
+          </label>
+        </div>
         <button id="save-settings" type="button">Save Display Settings</button>
       </section>
 
@@ -734,6 +750,9 @@
     const clockEnabled = document.getElementById('clock-enabled');
     const clockCorner = document.getElementById('clock-corner');
     const clockSize = document.getElementById('clock-size');
+    const clockFocus = document.getElementById('clock-focus');
+    const clockFocusBlur = document.getElementById('clock-focus-blur');
+    const clockFocusBrightness = document.getElementById('clock-focus-brightness');
     const slideshowMode = document.getElementById('slideshow-mode');
     const slideshowOrder = document.getElementById('slideshow-order');
     const uploadCategory = document.getElementById('upload-category');
@@ -788,6 +807,9 @@
         clockEnabled.checked = settings.clock.enabled;
         clockCorner.value = settings.clock.corner;
         clockSize.value = settings.clock.size;
+        clockFocus.checked = !!settings.clock.focus;
+        clockFocusBlur.value = settings.clock.focus_blur_px;
+        clockFocusBrightness.value = settings.clock.focus_brightness;
       }
       if (settings.slideshow_mode) slideshowMode.value = settings.slideshow_mode;
       if (settings.slideshow_order) slideshowOrder.value = settings.slideshow_order;
@@ -1189,6 +1211,9 @@
           clock_enabled: clockEnabled.checked,
           clock_corner: clockCorner.value,
           clock_size: clockSize.value,
+          clock_focus: clockFocus.checked,
+          clock_focus_blur_px: Number(clockFocusBlur.value),
+          clock_focus_brightness: Number(clockFocusBrightness.value),
           slideshow_mode: slideshowMode.value,
           slideshow_order: slideshowOrder.value,
         })

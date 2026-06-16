@@ -211,6 +211,12 @@ def init_db() -> None:
             "clock_enabled": "0",
             "clock_corner": "bottom-right",
             "clock_size": "medium",
+            # Centered-clock display mode: big clock middle of screen over a
+            # heavily blurred/dimmed slideshow. Its own blur/dim, independent of
+            # the normal backdrop_* settings; works in any slideshow_mode.
+            "clock_focus": "0",
+            "clock_focus_blur_px": "30",
+            "clock_focus_brightness": "0.2",
             "slideshow_mode": "all",
             "slideshow_order": "sequential",
         }
@@ -353,6 +359,10 @@ def clock_payload(conn: sqlite3.Connection) -> dict[str, Any]:
         "enabled": get_setting(conn, "clock_enabled", "0") == "1",
         "corner": get_setting(conn, "clock_corner", "bottom-right"),
         "size": get_setting(conn, "clock_size", "medium"),
+        # Centered-clock mode + its own backdrop blur/dim (issue: clock focus).
+        "focus": get_setting(conn, "clock_focus", "0") == "1",
+        "focus_blur_px": int(get_setting(conn, "clock_focus_blur_px", "30")),
+        "focus_brightness": float(get_setting(conn, "clock_focus_brightness", "0.2")),
     }
 
 
@@ -904,6 +914,14 @@ def apply_clock_settings(conn: sqlite3.Connection, body: dict[str, Any]) -> None
         if size not in CLOCK_SIZES:
             raise HTTPException(status_code=400, detail="Invalid clock size.")
         set_setting(conn, "clock_size", size)
+    if "clock_focus" in body:
+        set_setting(conn, "clock_focus", "1" if bool(body["clock_focus"]) else "0")
+    if "clock_focus_blur_px" in body:
+        value = max(0, min(60, parse_int(body["clock_focus_blur_px"], "clock_focus_blur_px")))
+        set_setting(conn, "clock_focus_blur_px", str(value))
+    if "clock_focus_brightness" in body:
+        value = max(0.0, min(1.0, parse_float(body["clock_focus_brightness"], "clock_focus_brightness")))
+        set_setting(conn, "clock_focus_brightness", str(value))
 
 
 @app.patch("/api/settings")

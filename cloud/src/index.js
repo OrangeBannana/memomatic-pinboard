@@ -64,8 +64,18 @@ export default {
         return json({ error: "not found" }, 404);
       }
 
-      // Owner settings API, fronted by Cloudflare Access (stage 3).
-      if (pathname.startsWith("/api/o/")) return json({ error: "not implemented (stage 3)" }, 501);
+      // Owner API, fronted by Cloudflare Access (configure an Access policy on
+      // /admin* and /api/o*). The header check below is a defense-in-depth guard.
+      if (pathname.startsWith("/api/o/")) {
+        if (!ownerAuthed(request, env))
+          return json({ error: "owner auth required — put /api/o* behind Cloudflare Access" }, 403);
+        if (pathname === "/api/o/state" && method === "GET") return ownerState(env);
+        if (pathname === "/api/o/settings" && method === "PATCH") return ownerSettings(request, env);
+        if (pathname === "/api/o/event-code" && method === "GET") return ownerListCodes(env);
+        if (pathname === "/api/o/event-code" && method === "POST") return ownerCreateCode(request, env);
+        if (pathname === "/api/o/event-code" && method === "DELETE") return ownerDeleteCode(url, env);
+        return json({ error: "not found" }, 404);
+      }
 
       // Anything else: static assets (guest UI is public/index.html).
       if (env.ASSETS) return env.ASSETS.fetch(request);
@@ -294,5 +304,104 @@ async function guestMessage(request, env) {
   await env.DB.prepare(
     "INSERT INTO submissions (kind, content, status, created_at) VALUES ('message', ?, 'pending', ?)"
   ).bind(content, now()).run();
+  return json({ ok: true });
+}
+
+// ── Owner endpoints (behind Cloudflare Access) ───────────────────────────────
+
+// Cloudflare Access injects Cf-Access-Authenticated-User-Email on authenticated
+// requests; requiring it means the owner API isn't wide open if the Access
+// policy is missing. For local `wrangler dev` set DEV_ALLOW_OWNER=1 in .dev.vars.
+function ownerAuthed(request, env) {
+  if (env.DEV_ALLOW_OWNER === "1") return true;
+  return !!request.headers.get("cf-access-authenticated-user-email");
+}
+
+function boolSetting(v) {
+  if (v === true || v === "1" || v === 1) return "1";
+  if (v === false || v === "0" || v === 0) return "0";
+  return null;
+}
+
+// Allowlist of basic settings the hosted owner page may change. Light validation
+// here; the Pi re-validates/clamps when it applies them via its own PATCH logic.
+const BASIC_SETTINGS = {
+  slideshow_mode: (v) => (["all", "images", "memes"].includes(v) ? v : null),
+  slideshow_order: (v) => (["sequential", "shuffle"].includes(v) ? v : null),
+  slide_seconds: (v) => (/^\d+$/.test(String(v)) && +v >= 1 ? String(+v) : null),
+  message_display_seconds: (v) => (/^\d+$/.test(String(v)) && +v >= 1 ? String(+v) : null),
+  guest_enabled: boolSetting,
+  guest_review_required: boolSetting,
+  clock_enabled: boolSetting,
+};
+
+async function ownerState(env) {
+  const row = await env.DB.prepare(
+    "SELECT settings_json, last_seen_at FROM device_state WHERE id=1"
+  ).first();
+  let settings = {};
+  try { settings = JSON.parse(row?.settings_json || "{}"); } catch { settings = {}; }
+  const pend = await env.DB.prepare(
+    "SELECT id, key, value, created_at FROM settings_commands WHERE applied_at IS NULL ORDER BY id"
+  ).all();
+  return json({ settings, last_seen_at: row?.last_seen_at || null, pending: pend.results || [] });
+}
+
+async function ownerSettings(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const entries = body && typeof body === "object" ? Object.entries(body) : [];
+  const queued = [];
+  for (const [key, val] of entries) {
+    const validate = BASIC_SETTINGS[key];
+    if (!validate) return json({ error: `setting not allowed: ${key}` }, 400);
+    const norm = validate(val);
+    if (norm === null) return json({ error: `invalid value for ${key}` }, 400);
+    await env.DB.prepare(
+      "INSERT INTO settings_commands (key, value, created_at) VALUES (?, ?, ?)"
+    ).bind(key, norm, now()).run();
+    queued.push(key);
+  }
+  if (!queued.length) return json({ error: "no valid settings provided" }, 400);
+  return json({ ok: true, queued });
+}
+
+// Unambiguous alphabet (no 0/O/1/I) for human-typed event codes.
+const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function genCode(len = 6) {
+  const a = new Uint8Array(len);
+  crypto.getRandomValues(a);
+  let s = "";
+  for (const b of a) s += CODE_ALPHABET[b % CODE_ALPHABET.length];
+  return s;
+}
+
+async function ownerCreateCode(request, env) {
+  const body = await request.json().catch(() => ({}));
+  const label = String(body.label || "").slice(0, 64) || null;
+  const ttlHours = Number(body.ttl_hours);
+  const expires = Number.isFinite(ttlHours) && ttlHours > 0 ? now() + ttlHours * 3600 * 1000 : null;
+  let code = genCode();
+  for (let i = 0; i < 5; i++) {
+    const exists = await env.DB.prepare("SELECT code FROM event_codes WHERE code=?").bind(code).first();
+    if (!exists) break;
+    code = genCode();
+  }
+  await env.DB.prepare(
+    "INSERT INTO event_codes (code, label, created_at, expires_at, active) VALUES (?, ?, ?, ?, 1)"
+  ).bind(code, label, now(), expires).run();
+  return json({ ok: true, code, label, expires_at: expires });
+}
+
+async function ownerListCodes(env) {
+  const r = await env.DB.prepare(
+    "SELECT code, label, created_at, expires_at, active FROM event_codes ORDER BY created_at DESC"
+  ).all();
+  return json({ codes: r.results || [] });
+}
+
+async function ownerDeleteCode(url, env) {
+  const code = url.searchParams.get("code");
+  if (!code) return json({ error: "code required" }, 400);
+  await env.DB.prepare("UPDATE event_codes SET active=0 WHERE code=?").bind(code).run();
   return json({ ok: true });
 }

@@ -26,6 +26,7 @@ FILES = [
     ("app/static/guest.html",         f"{PI_HOME}/app/static/guest.html"),
     ("app/spi_touch_read.c",          f"{PI_HOME}/app/spi_touch_read.c"),
     ("app/touch_bridge.py",           f"{PI_HOME}/app/touch_bridge.py"),
+    ("app/cloud_sync.py",             f"{PI_HOME}/app/cloud_sync.py"),
     ("app/touch_test.py",             f"{PI_HOME}/app/touch_test.py"),
     ("app/touch_diag.sh",             f"{PI_HOME}/app/touch_diag.sh"),
     ("app/raw_touch.py",              f"{PI_HOME}/app/raw_touch.py"),
@@ -36,6 +37,7 @@ FILES = [
     ("systemd/pinboard-touch.service","/tmp/pinboard-touch.service"),
     ("systemd/pinboard-splash.service","/tmp/pinboard-splash.service"),
     ("systemd/fbcp-ili9341.service",  "/tmp/fbcp-ili9341.service"),
+    ("systemd/pinboard-cloudsync.service","/tmp/pinboard-cloudsync.service"),
     ("install.sh",                    "/tmp/memomatic-install.sh"),
 ]
 
@@ -104,14 +106,17 @@ def main():
         "sudo cp /tmp/pinboard-touch.service /etc/systemd/system/pinboard-touch.service",
         "sudo cp /tmp/pinboard-splash.service /etc/systemd/system/pinboard-splash.service",
         "sudo cp /tmp/fbcp-ili9341.service /etc/systemd/system/fbcp-ili9341.service",
+        "sudo cp /tmp/pinboard-cloudsync.service /etc/systemd/system/pinboard-cloudsync.service",
+        "sudo chmod +x /home/memomatic/pinboard/app/cloud_sync.py",
         "sudo chmod +x /tmp/memomatic-install.sh",
         "sudo chmod +x /home/memomatic/pinboard/app/touch_bridge.py",
         "sudo chmod +x /home/memomatic/pinboard/app/touch_diag.sh",
         "sudo systemctl daemon-reload",
-        "sudo systemctl enable pinboard-app.service pinboard-kiosk.service pinboard-touch.service pinboard-splash.service fbcp-ili9341.service",
+        "sudo systemctl enable pinboard-app.service pinboard-kiosk.service pinboard-touch.service pinboard-splash.service fbcp-ili9341.service pinboard-cloudsync.service",
         "sudo systemctl restart pinboard-app.service",
         "sudo systemctl restart pinboard-kiosk.service",
         "sudo systemctl restart pinboard-touch.service",
+        "sudo systemctl restart pinboard-cloudsync.service",
         "echo DONE",
     ]
 

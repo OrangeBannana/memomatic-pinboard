@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Memomatic — Owner</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg:#0b0b0e; --glass-bg:rgba(20,20,28,0.82); --glass-border:rgba(255,255,255,0.10);
+      --text:#ede9e1; --text-muted:rgba(237,233,225,0.58); --text-subtle:rgba(237,233,225,0.30);
+      --accent:#7c6af5; --line:rgba(255,255,255,0.08); --danger:#e85454;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    body{min-height:100vh;padding:24px 12px;background:var(--bg);
+      background-image:radial-gradient(ellipse 80% 50% at 50% 0%,rgba(124,106,245,0.07),transparent);
+      color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:15px;line-height:1.5;
+      display:flex;flex-direction:column;align-items:center;gap:18px;}
+    .panel{width:min(540px,100%);background:var(--glass-bg);border:1px solid var(--glass-border);
+      border-radius:20px;padding:22px 20px;backdrop-filter:blur(20px) saturate(1.3);-webkit-backdrop-filter:blur(20px) saturate(1.3);}
+    h1{font-size:22px;font-weight:700;letter-spacing:-0.5px;}
+    h2{font-size:17px;font-weight:650;margin-bottom:14px;}
+    .meta{font-size:13px;color:var(--text-subtle);}
+    label{display:block;font-size:13px;color:var(--text-muted);margin:12px 0 4px;}
+    select,input[type="number"],input[type="text"]{width:100%;min-height:46px;background:rgba(20,20,28,0.96);
+      border:1px solid rgba(255,255,255,0.11);border-radius:10px;color:var(--text);font:inherit;font-size:15px;padding:10px 12px;}
+    select option{background:#14141c;color:var(--text);}
+    .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap;}
+    .row > div{flex:1;min-width:120px;}
+    .toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid var(--line);}
+    .toggle:first-of-type{border-top:none;}
+    button{appearance:none;min-height:46px;padding:11px 18px;border:1px solid transparent;border-radius:10px;
+      background:var(--accent);color:#fff;font:inherit;font-size:15px;font-weight:600;cursor:pointer;transition:opacity 140ms;}
+    button.secondary{background:rgba(255,255,255,0.08);border-color:rgba(255,255,255,0.13);color:var(--text);}
+    button.danger{background:rgba(232,84,84,0.14);border-color:var(--danger);color:var(--danger);min-height:36px;padding:6px 12px;font-size:13px;}
+    button:not(:disabled):hover{opacity:0.86;} button:disabled{opacity:0.4;cursor:wait;}
+    .switch{position:relative;width:46px;height:26px;flex:none;}
+    .switch input{opacity:0;width:0;height:0;}
+    .slider{position:absolute;inset:0;background:rgba(255,255,255,0.14);border-radius:999px;transition:.2s;cursor:pointer;}
+    .slider::before{content:"";position:absolute;height:20px;width:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;}
+    .switch input:checked + .slider{background:var(--accent);}
+    .switch input:checked + .slider::before{transform:translateX(20px);}
+    .status{min-height:20px;font-size:13px;color:var(--text-muted);margin-top:10px;}
+    .status.error{color:var(--danger);}
+    .code-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0;border-top:1px solid var(--line);}
+    .code-val{font-size:18px;font-weight:700;letter-spacing:2px;}
+    .code-meta{font-size:12px;color:var(--text-subtle);}
+    .inactive{opacity:0.45;}
+    .save-bar{display:flex;gap:10px;margin-top:16px;}
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <h1>Memomatic — Owner</h1>
+    <p class="meta" id="last-seen">Loading…</p>
+  </div>
+
+  <div class="panel">
+    <h2>Basic settings</h2>
+    <label for="slideshow_mode">Display mode</label>
+    <select id="slideshow_mode"><option value="all">All</option><option value="images">Photos</option><option value="memes">Memes</option></select>
+    <label for="slideshow_order">Order</label>
+    <select id="slideshow_order"><option value="sequential">Sequential</option><option value="shuffle">Shuffle</option></select>
+    <div class="row">
+      <div><label for="slide_seconds">Slide seconds</label><input id="slide_seconds" type="number" min="1"></div>
+      <div><label for="message_display_seconds">Message seconds</label><input id="message_display_seconds" type="number" min="1"></div>
+    </div>
+    <div class="toggle"><span>Guest uploads enabled</span><label class="switch"><input type="checkbox" id="guest_enabled"><span class="slider"></span></label></div>
+    <div class="toggle"><span>Require approval before showing</span><label class="switch"><input type="checkbox" id="guest_review_required"><span class="slider"></span></label></div>
+    <div class="toggle"><span>Clock overlay</span><label class="switch"><input type="checkbox" id="clock_enabled"><span class="slider"></span></label></div>
+    <div class="save-bar"><button id="save">Save settings</button><button class="secondary" id="reload">Reload</button></div>
+    <div class="status" id="settings-status"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Event codes</h2>
+    <p class="meta">Guests enter a code to unlock the upload page.</p>
+    <div class="row" style="margin-top:12px;">
+      <div><label for="code-label">Label (optional)</label><input id="code-label" type="text" placeholder="e.g. Birthday"></div>
+      <div style="flex:0 0 110px;"><label for="code-ttl">Expires (hrs)</label><input id="code-ttl" type="number" min="0" placeholder="never"></div>
+      <button id="new-code">New code</button>
+    </div>
+    <div id="codes"></div>
+    <div class="status" id="codes-status"></div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const BOOLS = ["guest_enabled", "guest_review_required", "clock_enabled"];
+    const SELECTS = ["slideshow_mode", "slideshow_order"];
+    const NUMS = ["slide_seconds", "message_display_seconds"];
+
+    async function api(path, opts) {
+      const r = await fetch(path, { credentials: "same-origin", ...opts });
+      let d = {}; try { d = await r.json(); } catch (_) {}
+      if (!r.ok) throw new Error(d.error || r.statusText);
+      return d;
+    }
+    function setStatus(el, msg, err) { el.textContent = msg; el.classList.toggle("error", !!err); }
+
+    async function loadState() {
+      try {
+        const d = await api("/api/o/state");
+        const s = d.settings || {};
+        for (const k of SELECTS) if (s[k] != null) $(k).value = s[k];
+        for (const k of NUMS) if (s[k] != null) $(k).value = s[k];
+        for (const k of BOOLS) $(k).checked = s[k] === "1" || s[k] === 1 || s[k] === true;
+        const seen = d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : "never";
+        const pend = (d.pending || []).length;
+        $("last-seen").textContent = `Frame last synced: ${seen}` + (pend ? ` · ${pend} change(s) waiting to apply` : "");
+      } catch (e) { setStatus($("settings-status"), e.message, true); }
+    }
+
+    $("save").addEventListener("click", async () => {
+      $("save").disabled = true;
+      setStatus($("settings-status"), "Queuing…");
+      const patch = {};
+      for (const k of SELECTS) patch[k] = $(k).value;
+      for (const k of NUMS) if ($(k).value !== "") patch[k] = $(k).value;
+      for (const k of BOOLS) patch[k] = $(k).checked ? "1" : "0";
+      try {
+        const d = await api("/api/o/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) });
+        setStatus($("settings-status"), `Queued ${d.queued.length} change(s) — the frame applies them on its next sync.`);
+        loadState();
+      } catch (e) { setStatus($("settings-status"), e.message, true); }
+      finally { $("save").disabled = false; }
+    });
+    $("reload").addEventListener("click", loadState);
+
+    async function loadCodes() {
+      try {
+        const d = await api("/api/o/event-code");
+        const box = $("codes"); box.innerHTML = "";
+        if (!(d.codes || []).length) { box.innerHTML = '<p class="meta" style="margin-top:10px;">No codes yet.</p>'; return; }
+        for (const c of d.codes) {
+          const active = c.active && (!c.expires_at || c.expires_at > Date.now());
+          const exp = c.expires_at ? `expires ${new Date(c.expires_at).toLocaleString()}` : "no expiry";
+          const row = document.createElement("div");
+          row.className = "code-row" + (active ? "" : " inactive");
+          row.innerHTML = `<div><div class="code-val">${c.code}</div><div class="code-meta">${c.label ? c.label + " · " : ""}${exp}${active ? "" : " · inactive"}</div></div>`;
+          if (active) {
+            const btn = document.createElement("button");
+            btn.className = "danger"; btn.textContent = "Deactivate";
+            btn.addEventListener("click", async () => {
+              btn.disabled = true;
+              try { await api("/api/o/event-code?code=" + encodeURIComponent(c.code), { method: "DELETE" }); loadCodes(); }
+              catch (e) { setStatus($("codes-status"), e.message, true); btn.disabled = false; }
+            });
+            row.appendChild(btn);
+          }
+          box.appendChild(row);
+        }
+      } catch (e) { setStatus($("codes-status"), e.message, true); }
+    }
+
+    $("new-code").addEventListener("click", async () => {
+      $("new-code").disabled = true;
+      setStatus($("codes-status"), "Creating…");
+      const ttl = parseInt($("code-ttl").value, 10);
+      try {
+        const d = await api("/api/o/event-code", {
+          method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ label: $("code-label").value.trim(), ttl_hours: Number.isFinite(ttl) ? ttl : 0 }),
+        });
+        setStatus($("codes-status"), `New code: ${d.code}`);
+        $("code-label").value = ""; $("code-ttl").value = "";
+        loadCodes();
+      } catch (e) { setStatus($("codes-status"), e.message, true); }
+      finally { $("new-code").disabled = false; }
+    });
+
+    loadState();
+    loadCodes();
+  </script>
+</body>
+</html>

@@ -41,7 +41,13 @@
       background-position: center;
       background-size: cover;
       filter: blur(var(--backdrop-blur, 8px)) saturate(1.03) brightness(var(--backdrop-brightness, 0.68));
+      /* Slow Ken Burns drift: JS sets a start/end background-position along the
+         cropped axis and this transition pans between them over the slide. */
+      will-change: background-position;
     }
+    /* Centered-clock mode: hide the sharp letterboxed foreground so the image
+       fills the frame as a full-bleed blurred/dimmed background. */
+    body.clock-focus .slide img { display: none; }
 
     .slide .backdrop::after {
       content: "";
@@ -461,6 +467,24 @@
       slide.querySelector('.backdrop').style.backgroundImage = `url("${url}")`;
     }
 
+    // Slow Ken Burns drift: pan the cover background along whichever axis is
+    // cropped (wide image -> left/right, tall image -> up/down), alternating
+    // ends per slide for variety. Runs over the slide duration.
+    let driftSeq = 0;
+    function startDrift(backdrop, natW, natH, durationMs) {
+      if (!natW || !natH) { backdrop.style.backgroundPosition = 'center'; return; }
+      const horizontal = (natW / natH) > (window.innerWidth / window.innerHeight);
+      const flip = (driftSeq++ % 2) === 1;
+      const a = flip ? 85 : 15, b = flip ? 15 : 85;
+      const start = horizontal ? `${a}% 50%` : `50% ${a}%`;
+      const end   = horizontal ? `${b}% 50%` : `50% ${b}%`;
+      backdrop.style.transition = 'none';
+      backdrop.style.backgroundPosition = start;
+      void backdrop.offsetWidth;  // commit the start position before transitioning
+      backdrop.style.transition = `background-position ${durationMs}ms linear`;
+      backdrop.style.backgroundPosition = end;
+    }
+
     function showMessage(msg, durationMs) {
       if (currentMessageId === msg.id) return;
       currentMessageId = msg.id;
@@ -510,6 +534,8 @@
           next.onload = () => {
             const ni = activeSlide === 0 ? 1 : 0;
             setSlide(slides[ni], url);
+            startDrift(slides[ni].querySelector('.backdrop'), next.naturalWidth, next.naturalHeight,
+                       (data.slide_seconds || 15) * 1000);
             slides[ni].classList.add('visible');
             slides[activeSlide].classList.remove('visible');
             activeSlide = ni;
@@ -550,6 +576,8 @@
         ? 'focus'
         : `corner-${clockState.corner} size-${clockState.size}`)
         + (show ? ' visible' : '');
+      // Focus mode hides the sharp foreground so the image fills the frame.
+      document.body.classList.toggle('clock-focus', clockState.focus);
       if (show) renderClockTime();
     }
     setInterval(() => { if (clockState.enabled || clockState.focus) renderClockTime(); }, 1000);

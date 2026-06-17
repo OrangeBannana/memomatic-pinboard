@@ -489,7 +489,7 @@
         </div>
         <form id="upload-form">
           <div class="form-row">
-            <input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp" required>
+            <input id="file" type="file" name="file" accept="image/jpeg,image/png,image/webp" multiple required>
             <select id="upload-category" title="Category">
               <option value="image">Photo</option>
               <option value="meme">Meme</option>
@@ -1162,22 +1162,31 @@
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (!fileInput.files.length) return;
+      const files = Array.from(fileInput.files);
+      if (!files.length) return;
       uploadButton.disabled = true;
-      setStatus('Uploading...');
-      try {
-        const body = new FormData();
-        body.append('file', fileInput.files[0]);
-        body.append('category', uploadCategory.value);
-        await api('/api/images', { method: 'POST', body });
-        fileInput.value = '';
-        setStatus('Uploaded.');
-        await loadImages();
-      } catch (error) {
-        setStatus(error.message);
-      } finally {
-        uploadButton.disabled = false;
+      // Upload sequentially — the Pi Zero is weak, and each upload runs Pillow.
+      const failures = [];
+      for (let i = 0; i < files.length; i++) {
+        setStatus(files.length > 1 ? `Uploading ${i + 1} of ${files.length}…` : 'Uploading…');
+        try {
+          const body = new FormData();
+          body.append('file', files[i]);
+          body.append('category', uploadCategory.value);
+          await api('/api/images', { method: 'POST', body });
+        } catch (error) {
+          failures.push(`${files[i].name}: ${error.message}`);
+        }
       }
+      fileInput.value = '';
+      const ok = files.length - failures.length;
+      setStatus(
+        failures.length
+          ? `Uploaded ${ok} of ${files.length}. Failed: ${failures.join('; ')}`
+          : `Uploaded ${ok} image${ok === 1 ? '' : 's'}.`
+      );
+      await loadImages();
+      uploadButton.disabled = false;
     });
 
     saveGuest.addEventListener('click', async () => {

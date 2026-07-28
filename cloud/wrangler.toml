@@ -20,7 +20,7 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "memomatic"
-database_id = "REPLACE_AFTER_wrangler_d1_create"
+database_id = "e88d37ae-28f4-4138-b935-58bea0e3bbed"
 
 [[r2_buckets]]
 binding = "UPLOADS"

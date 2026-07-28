@@ -24,7 +24,7 @@ cloud/
 | `POST /api/sync/state` | device secret | `{settings}` — Pi pushes current settings up for the owner UI |
 | `GET /api/sync/object?key=` | device secret | stream a pending upload's bytes to the Pi |
 | `/api/g/*` | event code (stage 2) | guest upload/message — **stub** |
-| `/api/o/*` | Cloudflare Access (stage 3) | owner settings + event codes — **stub** |
+| `/api/o/*` | `OWNER_PASSWORD` (X-Owner-Password header) | owner settings + event codes |
 
 ## Deploy (from your Cloudflare account)
 
@@ -36,6 +36,7 @@ npx wrangler d1 create memomatic            # paste database_id into wrangler.to
 npx wrangler r2 bucket create memomatic-uploads
 npm run db:init                             # apply schema.sql
 npx wrangler secret put DEVICE_SECRET       # same value goes on the Pi (PINBOARD_CLOUD_SECRET)
+npx wrangler secret put OWNER_PASSWORD       # login for the owner /admin page
 npm run deploy
 ```
 

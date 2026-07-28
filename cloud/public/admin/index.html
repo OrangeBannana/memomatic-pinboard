@@ -22,7 +22,7 @@
     h2{font-size:17px;font-weight:650;margin-bottom:14px;}
     .meta{font-size:13px;color:var(--text-subtle);}
     label{display:block;font-size:13px;color:var(--text-muted);margin:12px 0 4px;}
-    select,input[type="number"],input[type="text"]{width:100%;min-height:46px;background:rgba(20,20,28,0.96);
+    select,input[type="number"],input[type="text"],input[type="password"]{width:100%;min-height:46px;background:rgba(20,20,28,0.96);
       border:1px solid rgba(255,255,255,0.11);border-radius:10px;color:var(--text);font:inherit;font-size:15px;padding:10px 12px;}
     select option{background:#14141c;color:var(--text);}
     .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap;}
@@ -47,41 +47,58 @@
     .code-meta{font-size:12px;color:var(--text-subtle);}
     .inactive{opacity:0.45;}
     .save-bar{display:flex;gap:10px;margin-top:16px;}
+    .head-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .hidden{display:none !important;}
   </style>
 </head>
 <body>
-  <div class="panel">
+  <!-- Login gate -->
+  <div class="panel" id="login">
     <h1>Memomatic — Owner</h1>
-    <p class="meta" id="last-seen">Loading…</p>
+    <label for="pw">Owner password</label>
+    <input id="pw" type="password" autocomplete="current-password" placeholder="Password">
+    <div class="save-bar"><button id="login-btn">Unlock</button></div>
+    <div class="status" id="login-status"></div>
   </div>
 
-  <div class="panel">
-    <h2>Basic settings</h2>
-    <label for="slideshow_mode">Display mode</label>
-    <select id="slideshow_mode"><option value="all">All</option><option value="images">Photos</option><option value="memes">Memes</option></select>
-    <label for="slideshow_order">Order</label>
-    <select id="slideshow_order"><option value="sequential">Sequential</option><option value="shuffle">Shuffle</option></select>
-    <div class="row">
-      <div><label for="slide_seconds">Slide seconds</label><input id="slide_seconds" type="number" min="1"></div>
-      <div><label for="message_display_seconds">Message seconds</label><input id="message_display_seconds" type="number" min="1"></div>
+  <!-- App (revealed after login) -->
+  <div id="app" class="hidden" style="display:contents;">
+    <div class="panel">
+      <div class="head-bar">
+        <h1>Memomatic — Owner</h1>
+        <button class="secondary" id="lock-btn" style="min-height:36px;padding:6px 14px;font-size:13px;">Lock</button>
+      </div>
+      <p class="meta" id="last-seen">Loading…</p>
     </div>
-    <div class="toggle"><span>Guest uploads enabled</span><label class="switch"><input type="checkbox" id="guest_enabled"><span class="slider"></span></label></div>
-    <div class="toggle"><span>Require approval before showing</span><label class="switch"><input type="checkbox" id="guest_review_required"><span class="slider"></span></label></div>
-    <div class="toggle"><span>Clock overlay</span><label class="switch"><input type="checkbox" id="clock_enabled"><span class="slider"></span></label></div>
-    <div class="save-bar"><button id="save">Save settings</button><button class="secondary" id="reload">Reload</button></div>
-    <div class="status" id="settings-status"></div>
-  </div>
 
-  <div class="panel">
-    <h2>Event codes</h2>
-    <p class="meta">Guests enter a code to unlock the upload page.</p>
-    <div class="row" style="margin-top:12px;">
-      <div><label for="code-label">Label (optional)</label><input id="code-label" type="text" placeholder="e.g. Birthday"></div>
-      <div style="flex:0 0 110px;"><label for="code-ttl">Expires (hrs)</label><input id="code-ttl" type="number" min="0" placeholder="never"></div>
-      <button id="new-code">New code</button>
+    <div class="panel">
+      <h2>Basic settings</h2>
+      <label for="slideshow_mode">Display mode</label>
+      <select id="slideshow_mode"><option value="all">All</option><option value="images">Photos</option><option value="memes">Memes</option></select>
+      <label for="slideshow_order">Order</label>
+      <select id="slideshow_order"><option value="sequential">Sequential</option><option value="shuffle">Shuffle</option></select>
+      <div class="row">
+        <div><label for="slide_seconds">Slide seconds</label><input id="slide_seconds" type="number" min="1"></div>
+        <div><label for="message_display_seconds">Message seconds</label><input id="message_display_seconds" type="number" min="1"></div>
+      </div>
+      <div class="toggle"><span>Guest uploads enabled</span><label class="switch"><input type="checkbox" id="guest_enabled"><span class="slider"></span></label></div>
+      <div class="toggle"><span>Require approval before showing</span><label class="switch"><input type="checkbox" id="guest_review_required"><span class="slider"></span></label></div>
+      <div class="toggle"><span>Clock overlay</span><label class="switch"><input type="checkbox" id="clock_enabled"><span class="slider"></span></label></div>
+      <div class="save-bar"><button id="save">Save settings</button><button class="secondary" id="reload">Reload</button></div>
+      <div class="status" id="settings-status"></div>
     </div>
-    <div id="codes"></div>
-    <div class="status" id="codes-status"></div>
+
+    <div class="panel">
+      <h2>Event codes</h2>
+      <p class="meta">Guests enter a code to unlock the upload page.</p>
+      <div class="row" style="margin-top:12px;">
+        <div><label for="code-label">Label (optional)</label><input id="code-label" type="text" placeholder="e.g. Birthday"></div>
+        <div style="flex:0 0 110px;"><label for="code-ttl">Expires (hrs)</label><input id="code-ttl" type="number" min="0" placeholder="never"></div>
+        <button id="new-code">New code</button>
+      </div>
+      <div id="codes"></div>
+      <div class="status" id="codes-status"></div>
+    </div>
   </div>
 
   <script>
@@ -89,29 +106,97 @@
     const BOOLS = ["guest_enabled", "guest_review_required", "clock_enabled"];
     const SELECTS = ["slideshow_mode", "slideshow_order"];
     const NUMS = ["slide_seconds", "message_display_seconds"];
+    const PW_KEY = "mmOwnerPw";
+    let ownerPw = localStorage.getItem(PW_KEY) || "";
 
-    async function api(path, opts) {
-      const r = await fetch(path, { credentials: "same-origin", ...opts });
+    // AuthError signals a bad/missing password so we can bounce to the login gate.
+    class AuthError extends Error {}
+    async function api(path, opts = {}) {
+      const headers = { ...(opts.headers || {}), "X-Owner-Password": ownerPw };
+      const r = await fetch(path, { credentials: "same-origin", ...opts, headers });
       let d = {}; try { d = await r.json(); } catch (_) {}
+      if (r.status === 401 || r.status === 403) throw new AuthError(d.error || "unauthorized");
       if (!r.ok) throw new Error(d.error || r.statusText);
       return d;
     }
     function setStatus(el, msg, err) { el.textContent = msg; el.classList.toggle("error", !!err); }
 
-    async function loadState() {
-      try {
-        const d = await api("/api/o/state");
-        const s = d.settings || {};
-        for (const k of SELECTS) if (s[k] != null) $(k).value = s[k];
-        for (const k of NUMS) if (s[k] != null) $(k).value = s[k];
-        for (const k of BOOLS) $(k).checked = s[k] === "1" || s[k] === 1 || s[k] === true;
-        const seen = d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : "never";
-        const pend = (d.pending || []).length;
-        $("last-seen").textContent = `Frame last synced: ${seen}` + (pend ? ` · ${pend} change(s) waiting to apply` : "");
-      } catch (e) { setStatus($("settings-status"), e.message, true); }
+    function showApp(show) {
+      $("login").classList.toggle("hidden", show);
+      $("app").classList.toggle("hidden", !show);
+    }
+    function lock(msg) {
+      showApp(false);
+      if (msg) setStatus($("login-status"), msg, true);
+    }
+    // Wrap a loader so any AuthError kicks back to the login screen.
+    async function guard(fn) {
+      try { await fn(); }
+      catch (e) { if (e instanceof AuthError) { ownerPw = ""; localStorage.removeItem(PW_KEY); lock("Session expired — re-enter the password."); } }
     }
 
-    $("save").addEventListener("click", async () => {
+    async function loadState() {
+      const d = await api("/api/o/state");
+      const s = d.settings || {};
+      for (const k of SELECTS) if (s[k] != null) $(k).value = s[k];
+      for (const k of NUMS) if (s[k] != null) $(k).value = s[k];
+      for (const k of BOOLS) $(k).checked = s[k] === "1" || s[k] === 1 || s[k] === true;
+      const seen = d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : "never";
+      const pend = (d.pending || []).length;
+      $("last-seen").textContent = `Frame last synced: ${seen}` + (pend ? ` · ${pend} change(s) waiting to apply` : "");
+    }
+
+    async function loadCodes() {
+      const d = await api("/api/o/event-code");
+      const box = $("codes"); box.innerHTML = "";
+      if (!(d.codes || []).length) { box.innerHTML = '<p class="meta" style="margin-top:10px;">No codes yet.</p>'; return; }
+      for (const c of d.codes) {
+        const active = c.active && (!c.expires_at || c.expires_at > Date.now());
+        const exp = c.expires_at ? `expires ${new Date(c.expires_at).toLocaleString()}` : "no expiry";
+        const row = document.createElement("div");
+        row.className = "code-row" + (active ? "" : " inactive");
+        row.innerHTML = `<div><div class="code-val">${c.code}</div><div class="code-meta">${c.label ? c.label + " · " : ""}${exp}${active ? "" : " · inactive"}</div></div>`;
+        if (active) {
+          const btn = document.createElement("button");
+          btn.className = "danger"; btn.textContent = "Deactivate";
+          btn.addEventListener("click", () => guard(async () => {
+            btn.disabled = true;
+            await api("/api/o/event-code?code=" + encodeURIComponent(c.code), { method: "DELETE" });
+            loadCodes();
+          }));
+          row.appendChild(btn);
+        }
+        box.appendChild(row);
+      }
+    }
+
+    async function enterApp() {
+      showApp(true);
+      await Promise.all([guard(loadState), guard(loadCodes)]);
+    }
+
+    // Login
+    $("login-btn").addEventListener("click", async () => {
+      $("login-btn").disabled = true;
+      setStatus($("login-status"), "Checking…");
+      ownerPw = $("pw").value;
+      try {
+        await api("/api/o/state");           // validates the password
+        localStorage.setItem(PW_KEY, ownerPw);
+        $("pw").value = "";
+        setStatus($("login-status"), "");
+        enterApp();
+      } catch (e) {
+        ownerPw = "";
+        setStatus($("login-status"), e instanceof AuthError ? "Wrong password." : e.message, true);
+      } finally {
+        $("login-btn").disabled = false;
+      }
+    });
+    $("pw").addEventListener("keydown", (e) => { if (e.key === "Enter") $("login-btn").click(); });
+    $("lock-btn").addEventListener("click", () => { ownerPw = ""; localStorage.removeItem(PW_KEY); lock(""); });
+
+    $("save").addEventListener("click", () => guard(async () => {
       $("save").disabled = true;
       setStatus($("settings-status"), "Queuing…");
       const patch = {};
@@ -122,38 +207,11 @@
         const d = await api("/api/o/settings", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(patch) });
         setStatus($("settings-status"), `Queued ${d.queued.length} change(s) — the frame applies them on its next sync.`);
         loadState();
-      } catch (e) { setStatus($("settings-status"), e.message, true); }
-      finally { $("save").disabled = false; }
-    });
-    $("reload").addEventListener("click", loadState);
+      } finally { $("save").disabled = false; }
+    }));
+    $("reload").addEventListener("click", () => guard(loadState));
 
-    async function loadCodes() {
-      try {
-        const d = await api("/api/o/event-code");
-        const box = $("codes"); box.innerHTML = "";
-        if (!(d.codes || []).length) { box.innerHTML = '<p class="meta" style="margin-top:10px;">No codes yet.</p>'; return; }
-        for (const c of d.codes) {
-          const active = c.active && (!c.expires_at || c.expires_at > Date.now());
-          const exp = c.expires_at ? `expires ${new Date(c.expires_at).toLocaleString()}` : "no expiry";
-          const row = document.createElement("div");
-          row.className = "code-row" + (active ? "" : " inactive");
-          row.innerHTML = `<div><div class="code-val">${c.code}</div><div class="code-meta">${c.label ? c.label + " · " : ""}${exp}${active ? "" : " · inactive"}</div></div>`;
-          if (active) {
-            const btn = document.createElement("button");
-            btn.className = "danger"; btn.textContent = "Deactivate";
-            btn.addEventListener("click", async () => {
-              btn.disabled = true;
-              try { await api("/api/o/event-code?code=" + encodeURIComponent(c.code), { method: "DELETE" }); loadCodes(); }
-              catch (e) { setStatus($("codes-status"), e.message, true); btn.disabled = false; }
-            });
-            row.appendChild(btn);
-          }
-          box.appendChild(row);
-        }
-      } catch (e) { setStatus($("codes-status"), e.message, true); }
-    }
-
-    $("new-code").addEventListener("click", async () => {
+    $("new-code").addEventListener("click", () => guard(async () => {
       $("new-code").disabled = true;
       setStatus($("codes-status"), "Creating…");
       const ttl = parseInt($("code-ttl").value, 10);
@@ -165,12 +223,15 @@
         setStatus($("codes-status"), `New code: ${d.code}`);
         $("code-label").value = ""; $("code-ttl").value = "";
         loadCodes();
-      } catch (e) { setStatus($("codes-status"), e.message, true); }
-      finally { $("new-code").disabled = false; }
-    });
+      } finally { $("new-code").disabled = false; }
+    }));
 
-    loadState();
-    loadCodes();
+    // Auto-enter if we already have a stored password; otherwise show login.
+    if (ownerPw) {
+      api("/api/o/state").then(enterApp).catch(() => { ownerPw = ""; localStorage.removeItem(PW_KEY); lock(""); });
+    } else {
+      lock("");
+    }
   </script>
 </body>
 </html>

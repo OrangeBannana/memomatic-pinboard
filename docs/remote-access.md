@@ -28,7 +28,7 @@ Lets guests upload photos/messages and the owner change a few basic settings **f
 |---|---|
 | `cloud/src/index.js` | Worker: device sync API, guest API (`/api/g/*`), owner API (`/api/o/*`) |
 | `cloud/public/index.html` | Guest site: event-code gate → photo/message upload |
-| `cloud/public/admin/index.html` | Owner site: basic settings + event-code management (behind Access) |
+| `cloud/public/admin/index.html` | Owner site: password login → basic settings + event-code management |
 | `cloud/schema.sql` | D1 tables |
 | `app/cloud_sync.py` | Pi agent (pull/apply/push/ack loop) |
 | `systemd/pinboard-cloudsync.service` | runs the agent, outbound-only |
@@ -46,16 +46,17 @@ npx wrangler secret put DEVICE_SECRET         # a long random string; reuse on t
 npm run deploy                                # prints your https://memomatic-relay.<you>.workers.dev URL
 ```
 
-### Protect the owner site with Cloudflare Access
+### Owner authentication (app-level password)
 
-In the Cloudflare dashboard → **Zero Trust → Access → Applications**, add a **self-hosted** app covering the owner surface:
+The owner page (`/admin`) and API (`/api/o*`) are gated by an **`OWNER_PASSWORD`** Worker secret — not Cloudflare Access, because Access can't path-scope a bare `*.workers.dev` URL (it would force guests to authenticate too). Set it with:
 
-- Application domain / paths: your Worker hostname, paths `/admin*` and `/api/o*`.
-- Policy: **Allow** your email (one-time PIN) or your identity provider.
+```bash
+npx wrangler secret put OWNER_PASSWORD
+```
 
-The Worker also rejects `/api/o*` requests lacking the `Cf-Access-Authenticated-User-Email` header that Access injects — defense in depth, so the owner API isn't open if the policy is missing or misconfigured.
+The owner page prompts for this password, stores it in the browser, and sends it as an `X-Owner-Password` header (constant-time compared in the Worker), exactly like the LAN admin's owner token. The guest site (`/` and `/api/g/*`) stays public, gated only by the per-event code.
 
-The guest site (`/` and `/api/g/*`) stays public but is gated by the per-event code.
+> If you later add a custom domain to Cloudflare, you can switch to Cloudflare Access (SSO/OTP) on `/admin*` + `/api/o*` for a stronger login — swap `ownerAuthed()` back to the `Cf-Access-Authenticated-User-Email` header check.
 
 ### Optional: custom hostname
 
@@ -96,7 +97,7 @@ Basic settings exposed remotely: `slideshow_mode`, `slideshow_order`, `slide_sec
 ## Security
 
 - **Pi ↔ relay:** rotatable `DEVICE_SECRET` (bearer), constant-time compared; Pi outbound only.
-- **Owner site:** Cloudflare Access (SSO/OTP) + the header guard above.
+- **Owner site:** `OWNER_PASSWORD` Worker secret, constant-time compared; sent as an `X-Owner-Password` header over HTTPS.
 - **Guest site:** per-event code → HMAC-signed `HttpOnly; Secure; SameSite=Strict` cookie; sliding-window rate limits per code+IP (uploads/messages) and per IP (code-verify).
 - **Uploads:** type/size validated at the edge **and** re-validated on the Pi (Pillow decode in `save_upload`); raw bytes are transient in R2 and deleted on ack.
 - Rotate `DEVICE_SECRET` by `wrangler secret put DEVICE_SECRET` + updating `/etc/memomatic/cloudsync.env`. Rotate guest access by deactivating event codes in the owner UI.
@@ -106,7 +107,7 @@ Basic settings exposed remotely: `slideshow_mode`, `slideshow_order`, `slide_sec
 After deploying and configuring:
 
 1. **Health:** `curl https://<worker>/api/health` → `{"ok":true,...}`.
-2. **Owner auth:** visit `/admin` → Access prompts for login; after auth the settings + codes load.
+2. **Owner auth:** visit `/admin` → enter the owner password; after login the settings + codes load.
 3. **Event code:** create a code in the owner UI; open `/` in a private window, enter the code → upload UI appears.
 4. **Guest image:** upload a photo → within ~10s it appears on the frame (flashes next). Check `journalctl -u pinboard-cloudsync` shows `processed image …`.
 5. **Guest meme in Photos mode:** with mode = Photos, upload a *meme* → it flashes once then photos resume (existing push-next behavior).
@@ -121,5 +122,5 @@ After deploying and configuring:
 - **Agent idle / "PINBOARD_CLOUD_URL/SECRET not set":** the env file is missing or empty.
 - **401 from the relay:** `PINBOARD_CLOUD_SECRET` ≠ Worker `DEVICE_SECRET`.
 - **Settings don't apply:** `PINBOARD_OWNER_TOKEN` in the env file must match the running app's; check `journalctl -u pinboard-cloudsync` for "settings apply failed".
-- **Owner API 403:** the Access application/policy on `/admin*` + `/api/o*` is missing.
+- **Owner API 401:** wrong/missing owner password, or `OWNER_PASSWORD` not set on the Worker.
 - **Image rejected on Pi:** unsupported type/corrupt file — dropped (acked) with a warning so it doesn't loop.

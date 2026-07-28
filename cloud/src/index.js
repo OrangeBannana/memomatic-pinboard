@@ -68,7 +68,7 @@ export default {
       // /admin* and /api/o*). The header check below is a defense-in-depth guard.
       if (pathname.startsWith("/api/o/")) {
         if (!ownerAuthed(request, env))
-          return json({ error: "owner auth required — put /api/o* behind Cloudflare Access" }, 403);
+          return json({ error: "invalid or missing owner password" }, 401);
         if (pathname === "/api/o/state" && method === "GET") return ownerState(env);
         if (pathname === "/api/o/settings" && method === "PATCH") return ownerSettings(request, env);
         if (pathname === "/api/o/event-code" && method === "GET") return ownerListCodes(env);
@@ -309,12 +309,13 @@ async function guestMessage(request, env) {
 
 // ── Owner endpoints (behind Cloudflare Access) ───────────────────────────────
 
-// Cloudflare Access injects Cf-Access-Authenticated-User-Email on authenticated
-// requests; requiring it means the owner API isn't wide open if the Access
-// policy is missing. For local `wrangler dev` set DEV_ALLOW_OWNER=1 in .dev.vars.
+// App-level owner auth: the owner page sends the shared password as a header
+// (stored in the browser like the LAN admin's owner token). Constant-time
+// compared to the OWNER_PASSWORD secret. Used instead of Cloudflare Access
+// because Access can't path-scope a bare *.workers.dev URL.
 function ownerAuthed(request, env) {
-  if (env.DEV_ALLOW_OWNER === "1") return true;
-  return !!request.headers.get("cf-access-authenticated-user-email");
+  const pw = request.headers.get("x-owner-password") || "";
+  return !!env.OWNER_PASSWORD && safeEqual(pw, env.OWNER_PASSWORD);
 }
 
 function boolSetting(v) {
